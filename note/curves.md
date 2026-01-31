@@ -340,6 +340,661 @@ function expMap(a: HyperPoint, v: HyperPoint): HyperPoint {
 }
 ```
 
+## Generic Curve Architecture
+
+A unified system for handling all curve types with consistent
+interfaces.
+
+### Unified Curve Interface
+
+All curves implement a common interface for evaluation, derivatives, and
+operations.
+
+```typescript
+// In @/form/curve.ts
+
+interface Curve<P> {
+  // Core evaluation
+  evaluate(t: number): P
+  derivative(t: number): P
+  secondDerivative?(t: number): P
+
+  // Parameter bounds
+  tMin: number
+  tMax: number
+
+  // Properties
+  isClosed: boolean
+
+  // Arc length
+  arcLength(t0: number, t1: number): number
+  arcLengthToParameter(s: number, start?: number): number
+
+  // Bounding
+  boundingBox(): BoundingBox<P>
+
+  // Subdivision
+  split(t: number): [Curve<P>, Curve<P>]
+  subdivide(n: number): Curve<P>[]
+}
+
+// 2D hyperbolic curve
+type HyperbolicCurve2D = Curve<HyperPoint>
+
+// 3D hyperbolic curve
+type HyperbolicCurve3D = Curve<HyperPoint3D>
+
+// Unified geometry curve (with curvature K)
+interface UnifiedCurve<P> extends Curve<P> {
+  curvature: number // K: positive=spherical, 0=euclidean, negative=hyperbolic
+}
+```
+
+### NURBS in Hyperbolic Space
+
+Non-Uniform Rational B-Splines adapted for hyperbolic geometry.
+
+```typescript
+interface HyperbolicNURBS {
+  controlPoints: HyperPoint[]
+  weights: number[]
+  knots: number[]
+  degree: number
+}
+
+function evaluateNURBS(nurbs: HyperbolicNURBS, t: number): HyperPoint {
+  const { controlPoints, weights, knots, degree } = nurbs
+  const n = controlPoints.length - 1
+
+  // Find knot span
+  const span = findKnotSpan(t, knots, degree, n)
+
+  // Compute basis functions
+  const basis = bSplineBasis(t, span, knots, degree)
+
+  // Weighted average using hlerp
+  // For rational curves, we compute in homogeneous coordinates
+  let numerator = origin()
+  let denominator = 0
+
+  for (let i = 0; i <= degree; i++) {
+    const idx = span - degree + i
+    const w = basis[i] * weights[idx]
+    numerator = hlerp(
+      origin(),
+      controlPoints[idx],
+      w * distance(origin(), controlPoints[idx]),
+    )
+    denominator += w
+  }
+
+  return scale(numerator, 1 / denominator)
+}
+
+// Rational Bezier (special case of NURBS)
+interface RationalBezier {
+  controlPoints: HyperPoint[]
+  weights: number[]
+}
+
+function evaluateRationalBezier(
+  rb: RationalBezier,
+  t: number,
+): HyperPoint {
+  const n = rb.controlPoints.length - 1
+
+  // De Casteljau with weights
+  let points = [...rb.controlPoints]
+  let weights = [...rb.weights]
+
+  for (let r = 1; r <= n; r++) {
+    const newPoints: HyperPoint[] = []
+    const newWeights: number[] = []
+
+    for (let i = 0; i <= n - r; i++) {
+      const w0 = weights[i] * (1 - t)
+      const w1 = weights[i + 1] * t
+      const wSum = w0 + w1
+
+      newWeights.push(wSum)
+      newPoints.push(hlerp(points[i], points[i + 1], w1 / wSum))
+    }
+
+    points = newPoints
+    weights = newWeights
+  }
+
+  return points[0]
+}
+```
+
+### Arc-Length Parameterization
+
+Convert parameter t to arc length for uniform speed traversal.
+
+```typescript
+interface ArcLengthTable {
+  parameters: number[] // t values
+  arcLengths: number[] // Corresponding arc lengths
+  totalLength: number
+}
+
+function buildArcLengthTable(
+  curve: Curve<HyperPoint>,
+  samples: number = 100,
+): ArcLengthTable {
+  const parameters: number[] = []
+  const arcLengths: number[] = []
+
+  let totalLength = 0
+  let prevPoint = curve.evaluate(curve.tMin)
+
+  for (let i = 0; i <= samples; i++) {
+    const t = curve.tMin + (i / samples) * (curve.tMax - curve.tMin)
+    const point = curve.evaluate(t)
+
+    if (i > 0) {
+      totalLength += distance(prevPoint, point)
+    }
+
+    parameters.push(t)
+    arcLengths.push(totalLength)
+    prevPoint = point
+  }
+
+  return { parameters, arcLengths, totalLength }
+}
+
+function arcLengthToParameter(
+  table: ArcLengthTable,
+  targetLength: number,
+): number {
+  // Binary search for the parameter
+  const { parameters, arcLengths } = table
+
+  let lo = 0
+  let hi = arcLengths.length - 1
+
+  while (lo < hi - 1) {
+    const mid = Math.floor((lo + hi) / 2)
+    if (arcLengths[mid] < targetLength) {
+      lo = mid
+    } else {
+      hi = mid
+    }
+  }
+
+  // Linear interpolation within segment
+  const segmentLength = arcLengths[hi] - arcLengths[lo]
+  const segmentT = (targetLength - arcLengths[lo]) / segmentLength
+
+  return parameters[lo] + segmentT * (parameters[hi] - parameters[lo])
+}
+
+// Wrapper for uniform-speed evaluation
+class ArcLengthCurve implements Curve<HyperPoint> {
+  private base: Curve<HyperPoint>
+  private table: ArcLengthTable
+
+  constructor(base: Curve<HyperPoint>, samples: number = 100) {
+    this.base = base
+    this.table = buildArcLengthTable(base, samples)
+  }
+
+  get tMin() {
+    return 0
+  }
+  get tMax() {
+    return this.table.totalLength
+  }
+  get isClosed() {
+    return this.base.isClosed
+  }
+
+  evaluate(s: number): HyperPoint {
+    const t = arcLengthToParameter(this.table, s)
+    return this.base.evaluate(t)
+  }
+
+  derivative(s: number): HyperPoint {
+    // Normalized tangent (unit speed)
+    const t = arcLengthToParameter(this.table, s)
+    return normalize(this.base.derivative(t))
+  }
+
+  arcLength(s0: number, s1: number): number {
+    return Math.abs(s1 - s0)
+  }
+
+  arcLengthToParameter(s: number): number {
+    return s // Already parameterized by arc length
+  }
+
+  boundingBox() {
+    return this.base.boundingBox()
+  }
+
+  split(s: number): [Curve<HyperPoint>, Curve<HyperPoint>] {
+    const t = arcLengthToParameter(this.table, s)
+    const [left, right] = this.base.split(t)
+    return [new ArcLengthCurve(left), new ArcLengthCurve(right)]
+  }
+
+  subdivide(n: number): Curve<HyperPoint>[] {
+    const step = this.table.totalLength / n
+    const result: Curve<HyperPoint>[] = []
+    for (let i = 0; i < n; i++) {
+      const [_, right] = this.split(i * step)
+      const [segment, _2] = right.split(step)
+      result.push(segment)
+    }
+    return result
+  }
+}
+```
+
+### Curve Operations
+
+Common operations on curves.
+
+```typescript
+// Split curve at parameter t
+function splitCurve<P>(
+  curve: Curve<P>,
+  t: number,
+): [Curve<P>, Curve<P>] {
+  return curve.split(t)
+}
+
+// Join two curves (end of first connects to start of second)
+function joinCurves<P>(
+  curve1: Curve<P>,
+  curve2: Curve<P>,
+  continuity: 'C0' | 'C1' | 'G1' = 'C0',
+): Curve<P> {
+  // C0: Just connect endpoints
+  // C1: Match tangent vectors
+  // G1: Match tangent directions (not magnitudes)
+  return new CompositeCurve([curve1, curve2], continuity)
+}
+
+// Reverse curve direction
+function reverseCurve<P>(curve: Curve<P>): Curve<P> {
+  return {
+    ...curve,
+    evaluate: (t: number) =>
+      curve.evaluate(curve.tMax - t + curve.tMin),
+    derivative: (t: number) =>
+      scale(curve.derivative(curve.tMax - t + curve.tMin), -1),
+  }
+}
+
+// Offset curve (parallel curve at distance d)
+function offsetCurve(
+  curve: Curve<HyperPoint>,
+  distance: number,
+): Curve<HyperPoint> {
+  return {
+    ...curve,
+    evaluate: (t: number) => {
+      const p = curve.evaluate(t)
+      const tangent = curve.derivative(t)
+      const normal = perpendicularVector(tangent)
+      return translateAlongGeodesic(p, normal, distance)
+    },
+  }
+}
+
+// Trim curve to parameter range
+function trimCurve<P>(
+  curve: Curve<P>,
+  t0: number,
+  t1: number,
+): Curve<P> {
+  return {
+    ...curve,
+    tMin: t0,
+    tMax: t1,
+    evaluate: (t: number) => curve.evaluate(t0 + t * (t1 - t0)),
+  }
+}
+
+// Composite curve (piecewise)
+class CompositeCurve<P> implements Curve<P> {
+  private segments: Curve<P>[]
+  private breakpoints: number[]
+
+  constructor(
+    segments: Curve<P>[],
+    continuity: 'C0' | 'C1' | 'G1' = 'C0',
+  ) {
+    this.segments = segments
+    this.breakpoints = this.computeBreakpoints()
+  }
+
+  private computeBreakpoints(): number[] {
+    const breaks = [0]
+    for (const seg of this.segments) {
+      breaks.push(breaks[breaks.length - 1] + (seg.tMax - seg.tMin))
+    }
+    return breaks
+  }
+
+  get tMin() {
+    return 0
+  }
+  get tMax() {
+    return this.breakpoints[this.breakpoints.length - 1]
+  }
+  get isClosed() {
+    return false
+  }
+
+  evaluate(t: number): P {
+    const { segment, localT } = this.findSegment(t)
+    return segment.evaluate(localT)
+  }
+
+  derivative(t: number): P {
+    const { segment, localT } = this.findSegment(t)
+    return segment.derivative(localT)
+  }
+
+  private findSegment(t: number): {
+    segment: Curve<P>
+    localT: number
+  } {
+    for (let i = 0; i < this.segments.length; i++) {
+      if (t <= this.breakpoints[i + 1]) {
+        const localT =
+          this.segments[i].tMin +
+          ((t - this.breakpoints[i]) *
+            (this.segments[i].tMax - this.segments[i].tMin)) /
+            (this.breakpoints[i + 1] - this.breakpoints[i])
+        return { segment: this.segments[i], localT }
+      }
+    }
+    return {
+      segment: this.segments[this.segments.length - 1],
+      localT: this.segments[this.segments.length - 1].tMax,
+    }
+  }
+
+  // ... other methods
+}
+```
+
+### Curve Factories
+
+Create curves from various inputs.
+
+```typescript
+// From points (interpolating spline)
+function curveFromPoints(
+  points: HyperPoint[],
+  type: 'catmull-rom' | 'cubic-bezier' | 'geodesic' = 'catmull-rom',
+  closed: boolean = false,
+): Curve<HyperPoint> {
+  switch (type) {
+    case 'geodesic':
+      return new GeodesicPolyline(points, closed)
+    case 'cubic-bezier':
+      return new CubicBezierSpline(points, closed)
+    case 'catmull-rom':
+    default:
+      return new CatmullRomSpline(points, closed)
+  }
+}
+
+// From SVG path data
+function curveFromSVGPath(
+  d: string,
+  coordinateSystem: 'poincare' | 'klein' | 'hyperboloid' = 'poincare',
+): Curve<HyperPoint> {
+  const commands = parseSVGPath(d)
+  const segments: Curve<HyperPoint>[] = []
+
+  for (const cmd of commands) {
+    switch (cmd.type) {
+      case 'L':
+        segments.push(new GeodesicSegment(cmd.from, cmd.to))
+        break
+      case 'C':
+        segments.push(
+          new CubicBezierSegment(
+            cmd.from,
+            cmd.control1,
+            cmd.control2,
+            cmd.to,
+          ),
+        )
+        break
+      case 'Q':
+        segments.push(
+          new QuadraticBezierSegment(cmd.from, cmd.control, cmd.to),
+        )
+        break
+      case 'A':
+        segments.push(
+          new ArcSegment(cmd.from, cmd.to, cmd.rx, cmd.ry, cmd.angle),
+        )
+        break
+    }
+  }
+
+  return new CompositeCurve(segments)
+}
+
+// Circle/arc factory
+function circleArc(
+  center: HyperPoint,
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+): Curve<HyperPoint> {
+  return new HyperbolicArc(center, radius, startAngle, endAngle)
+}
+
+// Horocycle arc
+function horocycleArc(
+  idealPoint: HyperPoint,
+  startPoint: HyperPoint,
+  arcLength: number,
+): Curve<HyperPoint> {
+  return new HorocycleSegment(idealPoint, startPoint, arcLength)
+}
+
+// Hypercycle arc
+function hypercycleArc(
+  axis: Geodesic2D,
+  distance: number,
+  tStart: number,
+  tEnd: number,
+): Curve<HyperPoint> {
+  return new HypercycleSegment(axis, distance, tStart, tEnd)
+}
+```
+
+### Curve Interpolation and Fitting
+
+```typescript
+// Interpolate curve through points
+function interpolateCurve(
+  points: HyperPoint[],
+  method: 'hermite' | 'natural-spline' | 'monotone' = 'natural-spline',
+): Curve<HyperPoint> {
+  switch (method) {
+    case 'hermite':
+      return hermiteInterpolation(points)
+    case 'monotone':
+      return monotoneInterpolation(points)
+    case 'natural-spline':
+    default:
+      return naturalSplineInterpolation(points)
+  }
+}
+
+// Fit curve to points (least squares)
+function fitCurve(
+  points: HyperPoint[],
+  degree: number,
+  numControlPoints: number,
+): HyperbolicBezier {
+  // Least squares fitting using log/exp maps
+  // Minimize sum of squared distances
+}
+
+// Simplify curve (reduce control points while preserving shape)
+function simplifyCurve(
+  curve: Curve<HyperPoint>,
+  tolerance: number,
+): Curve<HyperPoint> {
+  // Douglas-Peucker style algorithm in hyperbolic space
+}
+```
+
+### Curve Intersection
+
+```typescript
+interface Intersection {
+  t1: number // Parameter on first curve
+  t2: number // Parameter on second curve
+  point: HyperPoint // Intersection point
+}
+
+function findIntersections(
+  curve1: Curve<HyperPoint>,
+  curve2: Curve<HyperPoint>,
+  tolerance: number = 1e-6,
+): Intersection[] {
+  // Bezier clipping or subdivision approach
+  const intersections: Intersection[] = []
+
+  function subdivideAndCheck(
+    c1: Curve<HyperPoint>,
+    t1Min: number,
+    t1Max: number,
+    c2: Curve<HyperPoint>,
+    t2Min: number,
+    t2Max: number,
+  ) {
+    const box1 = c1.boundingBox()
+    const box2 = c2.boundingBox()
+
+    if (!boxesIntersect(box1, box2)) return
+
+    const size1 = boxDiameter(box1)
+    const size2 = boxDiameter(box2)
+
+    if (size1 < tolerance && size2 < tolerance) {
+      // Found intersection
+      const t1 = (t1Min + t1Max) / 2
+      const t2 = (t2Min + t2Max) / 2
+      intersections.push({
+        t1,
+        t2,
+        point: curve1.evaluate(t1),
+      })
+      return
+    }
+
+    // Subdivide larger curve
+    if (size1 > size2) {
+      const tMid = (t1Min + t1Max) / 2
+      const [left, right] = c1.split(tMid)
+      subdivideAndCheck(left, t1Min, tMid, c2, t2Min, t2Max)
+      subdivideAndCheck(right, tMid, t1Max, c2, t2Min, t2Max)
+    } else {
+      const tMid = (t2Min + t2Max) / 2
+      const [left, right] = c2.split(tMid)
+      subdivideAndCheck(c1, t1Min, t1Max, left, t2Min, tMid)
+      subdivideAndCheck(c1, t1Min, t1Max, right, tMid, t2Max)
+    }
+  }
+
+  subdivideAndCheck(
+    curve1,
+    curve1.tMin,
+    curve1.tMax,
+    curve2,
+    curve2.tMin,
+    curve2.tMax,
+  )
+
+  return intersections
+}
+```
+
+### Curve Decorators
+
+Modify curves with visual effects.
+
+```typescript
+// Dashed curve
+class DashedCurve<P> implements Curve<P> {
+  constructor(
+    private base: Curve<P>,
+    private dashLength: number,
+    private gapLength: number,
+  ) {}
+
+  // Returns array of visible segments
+  getVisibleSegments(): Curve<P>[] {
+    const arcTable = buildArcLengthTable(this.base)
+    const totalLength = arcTable.totalLength
+    const segments: Curve<P>[] = []
+
+    let s = 0
+    while (s < totalLength) {
+      const dashEnd = Math.min(s + this.dashLength, totalLength)
+      const t0 = arcLengthToParameter(arcTable, s)
+      const t1 = arcLengthToParameter(arcTable, dashEnd)
+      segments.push(trimCurve(this.base, t0, t1))
+      s = dashEnd + this.gapLength
+    }
+
+    return segments
+  }
+}
+
+// Tapered curve (variable width)
+class TaperedCurve<P> implements Curve<P> {
+  constructor(
+    private base: Curve<P>,
+    private startWidth: number,
+    private endWidth: number,
+    private easing: (t: number) => number = t => t,
+  ) {}
+
+  widthAt(t: number): number {
+    const normalizedT =
+      (t - this.base.tMin) / (this.base.tMax - this.base.tMin)
+    const easedT = this.easing(normalizedT)
+    return this.startWidth + easedT * (this.endWidth - this.startWidth)
+  }
+}
+
+// Wavy curve
+class WavyCurve<P> implements Curve<P> {
+  constructor(
+    private base: Curve<P>,
+    private amplitude: number,
+    private frequency: number,
+  ) {}
+
+  evaluate(t: number): P {
+    const basePoint = this.base.evaluate(t)
+    const tangent = this.base.derivative(t)
+    const normal = perpendicularVector(tangent)
+
+    const phase = t * this.frequency * 2 * Math.PI
+    const offset = Math.sin(phase) * this.amplitude
+
+    return translateAlongGeodesic(basePoint, normal, offset)
+  }
+}
+```
+
 ## 3D Curves and Surfaces
 
 ### Geodesics in H³

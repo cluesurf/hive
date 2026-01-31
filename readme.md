@@ -8,16 +8,52 @@
 
 <h3 align='center'>@cluesurf/hive</h3>
 <p align='center'>
-  Visualization Basics in TypeScript
+  Visualization Basics in TypeScript<br/>
+  <em>(WIP)</em>
 </p>
 
 <br/>
 <br/>
 <br/>
 
+## Introduction
+
+`@cluesurf/hive` is vibe-coding our way through creating a TypeScript
+library for visualizing and exploring the 3 main geometries. It provides
+a unified framework for working with hyperbolic, spherical, and
+Euclidean spaces in 2D, 3D, and higher dimensions. The library enables
+generation of tessellations, honeycombs, fractals, kaleidoscopic
+patterns, and cellular automata across all three geometries.
+
+The core design uses pluggable geometry implementations with a shared
+abstract interface. This means the same algorithms for tessellation,
+curve drawing, camera navigation, and rendering work seamlessly whether
+you're tiling the hyperbolic plane with heptagons, packing spheres on a
+globe, or laying out a square grid. Internal coordinates use the
+mathematically optimal model for each geometry (hyperboloid for
+hyperbolic, unit sphere for spherical), with projection layers for
+display (Poincare disk, stereographic, etc.).
+
+Beyond basic visualization, the library supports audio-reactive
+animations, music visualizers, L-system fractals, escape-time fractals
+like Mandelbrot and Julia sets, and deep integration between systems.
+You can nest fractals inside tessellation tiles, apply kaleidoscopic
+symmetry to particle systems, or explore the limit sets of hyperbolic
+honeycombs. The rendering layer is optional, so core geometry can run in
+Node.js or Web Workers for computation-heavy tasks.
+
+## Digging In
+
+- Start digging around in the
+  [`./note`](https://github.com/cluesurf/hive/tree/make/note) folder for
+  documentations/plans/specs, and general notes and ideas on how we're
+  going to accomplish some things.
+- Check the [`./code`](https://github.com/cluesurf/hive/tree/make/code)
+  folder for where we put all the library code.
+
 ## Inspiration
 
-- [hyperbolic tessellations/honeycombs](https://github.com/lancejpollard?submit=Search&q=hyperbolic&tab=stars&type=&sort=&direction=&submit=Search)
+- [hyperbolic tessellations/honeycombs codebases](https://github.com/lancejpollard?submit=Search&q=hyperbolic&tab=stars&type=&sort=&direction=&submit=Search)
 
 ## License
 

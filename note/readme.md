@@ -14,6 +14,14 @@ visualization.
 | Curves (2D/3D)           | `curves.md`               |
 | Why hyperboloid model    | `hyperboloid-analysis.md` |
 | Unified geometry (S/E/H) | `unified-geometry.md`     |
+| Geometry implementations | `geometry-models.md`      |
+| Design principles        | `principles.md`           |
+| Coordinate systems       | `coordinate-systems.md`   |
+| Design TODOs             | `design-todos.md`         |
+| Tessellation generation  | `tessellation.md`         |
+| Kaleidoscope system      | `kaleidoscope.md`         |
+| Fractal system           | `fractals.md`             |
+| Hyperbolic honeycombs    | `hyperbolic-honeycombs.md`|
 
 ## Architecture
 
