@@ -128,7 +128,11 @@ export class Hyperbolic2DTessellation {
     }
 
     // Compute the neighbor's transform
-    const cellTransform = this.getCellTransform(cell)
+    const cellTransform = cell.transform
+    if (!cellTransform) {
+      // Should never happen - cells always have transforms
+      return cell
+    }
     const neighborTransform = this.composeSU11(
       this.edgeTransforms[dir]!,
       cellTransform,
@@ -145,46 +149,27 @@ export class Hyperbolic2DTessellation {
     }
 
     // Find which edge of the neighbor connects back to us
-    const backDir = this.findBackDirection(neighbor, cell)
+    // For regular tilings, it's the opposite edge (rotated by π)
+    const backDir = this.findBackDirection(dir)
 
-    // Connect them
+    // Connect them bidirectionally
     cell.neighbors[dir] = neighbor
     cell.neighborSpins[dir] = backDir
-
-    if (backDir >= 0) {
-      neighbor.neighbors[backDir] = cell
-      neighbor.neighborSpins[backDir] = dir
-    }
+    neighbor.neighbors[backDir] = cell
+    neighbor.neighborSpins[backDir] = dir
 
     return neighbor
   }
 
   /**
-   * Find which edge of neighborCell connects back to parentCell.
+   * Find which edge of neighbor connects back when crossing edge dir.
+   * For regular {p,q} tilings, the neighbor is rotated by π, so the back edge
+   * is approximately opposite: (dir + p/2) mod p.
    */
-  private findBackDirection(neighborCell: Cell, parentCell: Cell): number {
-    const neighborTransform = this.getCellTransform(neighborCell)
-    const parentTransform = this.getCellTransform(parentCell)
-    const parentHash = this.hashTransform(parentTransform)
-
-    // Check each edge of neighbor to find one that leads back to parent
-    for (let d = 0; d < this.config.p; d++) {
-      if (neighborCell.neighbors[d] === parentCell) {
-        return d
-      }
-
-      // Compute where this edge would lead
-      const testTransform = this.composeSU11(
-        this.edgeTransforms[d]!,
-        neighborTransform,
-      )
-      if (this.hashTransform(testTransform) === parentHash) {
-        return d
-      }
-    }
-
-    // Fallback: use geometric approximation
-    return Math.floor(this.config.p / 2)
+  private findBackDirection(dir: number): number {
+    const { p } = this.config
+    // The neighbor tile is rotated by π, so back edge is offset by p/2
+    return (dir + Math.floor(p / 2)) % p
   }
 
   /**
@@ -209,14 +194,20 @@ export class Hyperbolic2DTessellation {
   }
 
   /**
-   * Walk from current center toward view center.
+   * Walk from current center toward view center (like HyperRogue's player movement).
+   * This creates new cells as needed along the path.
    */
   private updateCenterCell(): void {
     let current = this.centerCell
-    const maxSteps = 50
+    const maxSteps = 5 // Just a few steps per frame
 
     for (let step = 0; step < maxSteps; step++) {
-      const currentDist = this.cellDistanceFromViewCenter(current)
+      const currentTransform = current.transform
+      if (!currentTransform) break
+
+      const combined = this.composeSU11(this.viewTransform, currentTransform)
+      const center = this.applySU11Transform(combined, [0, 0])
+      const currentDist = center[0] * center[0] + center[1] * center[1]
 
       // Close enough to center
       if (currentDist < 0.1) break
@@ -227,7 +218,12 @@ export class Hyperbolic2DTessellation {
 
       for (let d = 0; d < this.config.p; d++) {
         const neighbor = this.move(current, d)
-        const neighborDist = this.cellDistanceFromViewCenter(neighbor)
+        const neighborTransform = neighbor.transform
+        if (!neighborTransform) continue
+
+        const neighborCombined = this.composeSU11(this.viewTransform, neighborTransform)
+        const neighborCenter = this.applySU11Transform(neighborCombined, [0, 0])
+        const neighborDist = neighborCenter[0] * neighborCenter[0] + neighborCenter[1] * neighborCenter[1]
 
         if (neighborDist < bestDist) {
           bestDist = neighborDist
@@ -235,9 +231,7 @@ export class Hyperbolic2DTessellation {
         }
       }
 
-      // No improvement - at local minimum
       if (bestNeighbor === current) break
-
       current = bestNeighbor
     }
 
@@ -247,146 +241,51 @@ export class Hyperbolic2DTessellation {
   /**
    * Compute how far a cell's center is from the view center.
    */
-  private cellDistanceFromViewCenter(cell: Cell): number {
-    const transform = this.getCellTransform(cell)
-    const combined = this.composeSU11(this.viewTransform, transform)
-    const center = this.applySU11Transform(combined, [0, 0])
-    return center[0] * center[0] + center[1] * center[1]
-  }
 
   /**
-   * Get or compute cell's transform (lazy).
-   */
-  private getCellTransform(cell: Cell): Matrix {
-    if (cell.transform) return cell.transform
-
-    // Origin has identity transform
-    if (cell === this.origin) {
-      cell.transform = [1, 0, 0, 0, 0, 0, 0, 0, 1]
-      return cell.transform
-    }
-
-    // Find a neighbor that has a transform and compute from it
-    for (let d = 0; d < this.config.p; d++) {
-      const neighbor = cell.neighbors[d]
-      if (neighbor && neighbor.transform) {
-        const backDir = cell.neighborSpins[d]
-        const edgeTransform = this.edgeTransforms[backDir]!
-        cell.transform = this.composeSU11(edgeTransform, neighbor.transform)
-        return cell.transform
-      }
-    }
-
-    // Fallback: BFS from origin to compute transform
-    cell.transform = this.computeTransformFromOrigin(cell)
-    return cell.transform
-  }
-
-  /**
-   * Compute transform by BFS from origin.
-   */
-  private computeTransformFromOrigin(target: Cell): Matrix {
-    // BFS to find path from origin to target
-    const visited = new Map<Cell, { parent: Cell; dir: number } | null>()
-    const queue: Cell[] = [this.origin]
-    visited.set(this.origin, null)
-
-    while (queue.length > 0) {
-      const cell = queue.shift()!
-
-      if (cell === target) {
-        // Reconstruct path and compute transform
-        const path: { cell: Cell; dir: number }[] = []
-        let current = target
-        while (visited.get(current)) {
-          const info = visited.get(current)!
-          path.unshift({ cell: info.parent, dir: info.dir })
-          current = info.parent
-        }
-
-        let transform: Matrix = [1, 0, 0, 0, 0, 0, 0, 0, 1]
-        for (const step of path) {
-          transform = this.composeSU11(
-            this.edgeTransforms[step.dir]!,
-            transform,
-          )
-        }
-        return transform
-      }
-
-      for (let d = 0; d < this.config.p; d++) {
-        const neighbor = cell.neighbors[d]
-        if (neighbor && !visited.has(neighbor)) {
-          visited.set(neighbor, { parent: cell, dir: d })
-          queue.push(neighbor)
-        }
-      }
-    }
-
-    // Should never reach here
-    return [1, 0, 0, 0, 0, 0, 0, 0, 1]
-  }
-
-  /**
-   * Get visible tiles - BFS from center cell.
+   * Get visible tiles - BFS from center cell (like HyperRogue's visibility).
+   * Creates new cells as needed during exploration.
    */
   getVisibleTiles(): VisibleTile[] {
     this.frameCount++
     const visible: VisibleTile[] = []
     const visited = new Set<Cell>()
-    const queue: Cell[] = [this.centerCell]
 
-    while (queue.length > 0 && visible.length < this.config.maxTiles) {
-      const cell = queue.shift()!
+    // Use index-based queue iteration (shift() is O(n), this is O(1))
+    const queue: Cell[] = [this.centerCell]
+    let queueIndex = 0
+
+    while (queueIndex < queue.length && visible.length < this.config.maxTiles) {
+      const cell = queue[queueIndex++]!
 
       if (visited.has(cell)) continue
       visited.add(cell)
 
-      if (cell.distance > this.config.maxDepth) continue
-
       // Compute vertices for this cell
-      const transform = this.getCellTransform(cell)
+      const transform = cell.transform
+      if (!transform) continue
+
       const combined = this.composeSU11(this.viewTransform, transform)
       const vertices = this.baseVertices.map(v =>
         this.applySU11Transform(combined, v),
       )
 
-      // Check visibility
-      const isVisible = vertices.some(([u, v]) => u * u + v * v < 1.0)
+      // Check visibility - any vertex inside the unit disk
+      const isVisible = vertices.some(([u, v]) => u * u + v * v < 0.98)
 
       if (isVisible) {
         visible.push({ id: String(cell.id), vertices })
         cell.lastSeenFrame = this.frameCount
 
-        // Explore all neighbors
+        // Explore all neighbors (creates them if needed)
         for (let d = 0; d < this.config.p; d++) {
           const neighbor = this.move(cell, d)
           if (!visited.has(neighbor)) {
             queue.push(neighbor)
           }
         }
-      } else {
-        // Compute center distance
-        let cx = 0,
-          cy = 0
-        for (const [u, v] of vertices) {
-          cx += u
-          cy += v
-        }
-        cx /= vertices.length
-        cy /= vertices.length
-        const centerDist = cx * cx + cy * cy
-
-        // Explore if close to view center (helps find visible tiles)
-        if (centerDist < 4.0) {
-          for (let d = 0; d < this.config.p; d++) {
-            const neighbor = this.move(cell, d)
-            if (!visited.has(neighbor)) {
-              queue.push(neighbor)
-            }
-          }
-        }
       }
+      // Don't explore non-visible cells - trust the BFS from visible ones
     }
 
     return visible
@@ -578,7 +477,8 @@ export class Hyperbolic2DTessellation {
     this.centerCell = target
 
     // Compute transform to center view on this cell
-    const cellTransform = this.getCellTransform(target)
+    const cellTransform = target.transform
+    if (!cellTransform) return null
 
     // To center on this cell, we need the inverse transform
     // In SU(1,1), inverse of [a, b] is [conj(a), -b] / det
@@ -593,12 +493,13 @@ export class Hyperbolic2DTessellation {
 
     const visited = new Set<Cell>()
     const queue: Cell[] = [this.centerCell]
+    let queueIndex = 0
 
     // Search within reasonable radius (visible cells are nearby)
-    const maxSearch = 5000
+    const maxSearch = 1000
 
-    while (queue.length > 0 && visited.size < maxSearch) {
-      const cell = queue.shift()!
+    while (queueIndex < queue.length && visited.size < maxSearch) {
+      const cell = queue[queueIndex++]!
 
       if (visited.has(cell)) continue
       visited.add(cell)
@@ -640,7 +541,8 @@ export class Hyperbolic2DTessellation {
     const target = this.findCellById(targetId)
     if (!target) return null
 
-    const cellTransform = this.getCellTransform(target)
+    const cellTransform = target.transform
+    if (!cellTransform) return null
     const targetView = this.invertSU11(cellTransform)
 
     // Interpolate between current view and target
