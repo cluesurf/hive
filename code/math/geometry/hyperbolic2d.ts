@@ -172,16 +172,21 @@ export class Hyperbolic2D extends Geometry {
       return identity(3)
     }
 
-    // Householder-like reflection in Minkowski space
-    // R = I - 2 * n * n^T * eta / (n^T * eta * n)
-    // where eta = diag(1, 1, -1)
+    // Minkowski space reflection: R(v) = v - 2 * <v,n>_M / <n,n>_M * n
+    // where <a,b>_M = a.x*b.x + a.y*b.y - a.t*b.t
+    //
+    // Key: <e_x, n>_M = n.x, <e_y, n>_M = n.y, <e_t, n>_M = -n.t
+    //
+    // R(e_x) = e_x - (2*n.x/dot)*n = [1 - 2x²/dot, -2xy/dot, -2xt/dot]
+    // R(e_y) = e_y - (2*n.y/dot)*n = [-2xy/dot, 1 - 2y²/dot, -2yt/dot]
+    // R(e_t) = e_t - (2*(-n.t)/dot)*n = [2xt/dot, 2yt/dot, 1 + 2t²/dot]
     if (out) {
       out[0] = 1 - (2 * x * x) / dot
       out[1] = (-2 * x * y) / dot
-      out[2] = (2 * x * t) / dot
+      out[2] = (-2 * x * t) / dot
       out[3] = (-2 * x * y) / dot
       out[4] = 1 - (2 * y * y) / dot
-      out[5] = (2 * y * t) / dot
+      out[5] = (-2 * y * t) / dot
       out[6] = (2 * x * t) / dot
       out[7] = (2 * y * t) / dot
       out[8] = 1 + (2 * t * t) / dot
@@ -190,10 +195,10 @@ export class Hyperbolic2D extends Geometry {
     return [
       1 - (2 * x * x) / dot,
       (-2 * x * y) / dot,
-      (2 * x * t) / dot,
+      (-2 * x * t) / dot,
       (-2 * x * y) / dot,
       1 - (2 * y * y) / dot,
-      (2 * y * t) / dot,
+      (-2 * y * t) / dot,
       (2 * x * t) / dot,
       (2 * y * t) / dot,
       1 + (2 * t * t) / dot,

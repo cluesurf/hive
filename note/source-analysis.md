@@ -15,7 +15,7 @@
 
 ## HyperRogue (Gold Standard)
 
-- **Path:** `base/hyperrogue-master/`
+- **Path:** `./base/hyperrogue-master/`
 - **Docs:** https://roguetemple.com/z/hyper/dev.php
 - **Models:** https://roguetemple.com/z/hyper/models.php
 
