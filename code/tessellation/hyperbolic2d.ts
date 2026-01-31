@@ -194,14 +194,15 @@ export class Hyperbolic2DTessellation {
   }
 
   /**
-   * Walk from current center toward view center (like HyperRogue's player movement).
-   * This creates new cells as needed along the path.
+   * Walk from current center toward view center.
+   * Just a few steps - getVisibleTiles will update centerCell when it finds visible tiles.
    */
   private updateCenterCell(): void {
+    // getVisibleTiles handles the main center tracking now
+    // This just does a quick step toward view center as a hint
     let current = this.centerCell
-    const maxSteps = 5 // Just a few steps per frame
 
-    for (let step = 0; step < maxSteps; step++) {
+    for (let step = 0; step < 3; step++) {
       const currentTransform = current.transform
       if (!currentTransform) break
 
@@ -209,10 +210,8 @@ export class Hyperbolic2DTessellation {
       const center = this.applySU11Transform(combined, [0, 0])
       const currentDist = center[0] * center[0] + center[1] * center[1]
 
-      // Close enough to center
       if (currentDist < 0.1) break
 
-      // Find neighbor closer to view center
       let bestNeighbor = current
       let bestDist = currentDist
 
@@ -239,29 +238,26 @@ export class Hyperbolic2DTessellation {
   }
 
   /**
-   * Compute how far a cell's center is from the view center.
-   */
-
-  /**
-   * Get visible tiles - BFS from center cell (like HyperRogue's visibility).
-   * Creates new cells as needed during exploration.
+   * Get visible tiles - BFS from center cell.
+   * Two-phase approach: first find any visible cell, then expand from there.
    */
   getVisibleTiles(): VisibleTile[] {
     this.frameCount++
     const visible: VisibleTile[] = []
     const visited = new Set<Cell>()
+    const visibleCells: Cell[] = []
 
-    // Use index-based queue iteration (shift() is O(n), this is O(1))
     const queue: Cell[] = [this.centerCell]
     let queueIndex = 0
 
-    while (queueIndex < queue.length && visible.length < this.config.maxTiles) {
+    // Phase 1: Explore outward until we find at least one visible tile
+    const maxSearchForVisible = 300
+    while (queueIndex < queue.length && visibleCells.length === 0 && queueIndex < maxSearchForVisible) {
       const cell = queue[queueIndex++]!
 
       if (visited.has(cell)) continue
       visited.add(cell)
 
-      // Compute vertices for this cell
       const transform = cell.transform
       if (!transform) continue
 
@@ -270,22 +266,51 @@ export class Hyperbolic2DTessellation {
         this.applySU11Transform(combined, v),
       )
 
-      // Check visibility - any vertex inside the unit disk
       const isVisible = vertices.some(([u, v]) => u * u + v * v < 0.98)
 
       if (isVisible) {
         visible.push({ id: String(cell.id), vertices })
+        visibleCells.push(cell)
         cell.lastSeenFrame = this.frameCount
+        // Update center cell to this visible cell for next frame
+        this.centerCell = cell
+      }
 
-        // Explore all neighbors (creates them if needed)
-        for (let d = 0; d < this.config.p; d++) {
-          const neighbor = this.move(cell, d)
-          if (!visited.has(neighbor)) {
-            queue.push(neighbor)
-          }
+      // Always explore all neighbors during search phase
+      for (let d = 0; d < this.config.p; d++) {
+        const neighbor = this.move(cell, d)
+        if (!visited.has(neighbor)) {
+          queue.push(neighbor)
         }
       }
-      // Don't explore non-visible cells - trust the BFS from visible ones
+    }
+
+    // Phase 2: Expand from visible cells to find all visible tiles
+    let visibleIndex = 0
+    while (visibleIndex < visibleCells.length && visible.length < this.config.maxTiles) {
+      const cell = visibleCells[visibleIndex++]!
+
+      for (let d = 0; d < this.config.p; d++) {
+        const neighbor = this.move(cell, d)
+        if (visited.has(neighbor)) continue
+        visited.add(neighbor)
+
+        const transform = neighbor.transform
+        if (!transform) continue
+
+        const combined = this.composeSU11(this.viewTransform, transform)
+        const vertices = this.baseVertices.map(v =>
+          this.applySU11Transform(combined, v),
+        )
+
+        const isVisible = vertices.some(([u, v]) => u * u + v * v < 0.98)
+
+        if (isVisible) {
+          visible.push({ id: String(neighbor.id), vertices })
+          visibleCells.push(neighbor)
+          neighbor.lastSeenFrame = this.frameCount
+        }
+      }
     }
 
     return visible
