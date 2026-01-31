@@ -25,6 +25,7 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "gl-matrix": "^3.4.4"
+    "gl-matrix": "^3.4.4",
+    "lodash": "^4.17.23"
   }
 }
