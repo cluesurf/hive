@@ -1,9 +1,12 @@
 # Margenstern's Pentagrid Coordinate System
 
-**Source:** "New Tools for Cellular Automata in the Hyperbolic Plane" by
-Maurice Margenstern (2002)
+**Citation:**
 
-**Paper:** `./base/papers/1-s2.0-S0304397502006606-main.pdf`
+Margenstern, M. (2002). New tools for cellular automata in the
+hyperbolic plane. _Theoretical Computer Science_, 296(3), 405-442.
+https://doi.org/10.1016/S0304-3975(02)00660-6
+
+**Local copy:** `./base/papers/1-s2.0-S0304397502006606-main.pdf`
 
 ## Overview
 
