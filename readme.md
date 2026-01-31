@@ -15,6 +15,10 @@
 <br/>
 <br/>
 
+## Inspiration
+
+- [hyperbolic tessellations/honeycombs](https://github.com/lancejpollard?submit=Search&q=hyperbolic&tab=stars&type=&sort=&direction=&submit=Search)
+
 ## License
 
 MIT
