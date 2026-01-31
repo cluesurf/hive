@@ -168,8 +168,8 @@ export class Canvas2DRenderer {
       // Project from hyperboloid to Poincare disk
       hyperboloidToPoincare(point, this.tempPoincare)
 
-      // Check visibility
-      if (!isInsideDisk(this.tempPoincare, 0.999)) {
+      // Check visibility - use larger threshold to include edge tiles
+      if (!isInsideDisk(this.tempPoincare, 1.5)) {
         return null
       }
 

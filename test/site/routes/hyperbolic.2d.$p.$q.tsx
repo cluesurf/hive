@@ -37,7 +37,7 @@ export default function HyperbolicTiling() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<Canvas2DRenderer | null>(null)
   const [zoom, setZoom] = useState(0.9)
-  const [depth, setDepth] = useState(4)
+  const [depth, setDepth] = useState(5)
 
   const drawTiling = useCallback(() => {
     const canvas = canvasRef.current
@@ -131,7 +131,7 @@ export default function HyperbolicTiling() {
             <input
               type="range"
               min="1"
-              max="6"
+              max="8"
               value={depth}
               onChange={e => setDepth(parseInt(e.target.value, 10))}
               className="w-24"

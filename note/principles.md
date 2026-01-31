@@ -118,6 +118,29 @@ layer.
 Internal coordinates (hyperboloid, sphere) separate from display
 projection (Poincare, Klein, stereographic).
 
+### Use Hyperboloid Model for Hyperbolic Geometry
+
+Always use the hyperboloid model (Minkowski space ℝ²'¹) for hyperbolic
+geometry computations, not the Poincare disk model directly. The
+hyperboloid model provides:
+
+- Cleaner, more unified mathematics
+- Easier generalization to higher dimensions
+- Linear transformations (Lorentz matrices) instead of Mobius
+  transformations
+- Better numerical stability for accumulated transforms
+
+Only project to Poincare disk (or other models) at render time.
+
+```typescript
+// Good: Compute in hyperboloid, project for display
+const hyperboloidPoint = geometry.pointOnGeodesic(origin, direction, R)
+const diskPoint = hyperboloidToPoincare(hyperboloidPoint)
+
+// Avoid: Working directly in Poincare disk with Mobius transforms
+const diskPoint = applyMobius(mobius, diskPoint)
+```
+
 ## Performance
 
 ### Avoid Allocation in Hot Paths
