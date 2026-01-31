@@ -158,8 +158,15 @@ export class Hyperbolic2DTessellation {
 
       for (let dir = 0; dir < neighbors.length; dir++) {
         const neighborId = neighbors[dir]!
-        const nTransform = this.getTileTransform(neighborId, current, dir)
-        const nCombined = this.composeSU11(this.viewTransform, nTransform)
+        const nTransform = this.getTileTransform(
+          neighborId,
+          current,
+          dir,
+        )
+        const nCombined = this.composeSU11(
+          this.viewTransform,
+          nTransform,
+        )
         const nCenter = this.applySU11Transform(nCombined, [0, 0])
         const nDist = nCenter[0] * nCenter[0] + nCenter[1] * nCenter[1]
 
@@ -236,7 +243,8 @@ export class Hyperbolic2DTessellation {
       const vertices = this.computeVerticesWithTransform(tileTransform)
 
       // Compute center for distance check
-      let cx = 0, cy = 0
+      let cx = 0,
+        cy = 0
       for (const [u, v] of vertices) {
         cx += u
         cy += v
@@ -324,7 +332,9 @@ export class Hyperbolic2DTessellation {
     // Compose tile transform with view transform once
     const combined = this.composeSU11(this.viewTransform, tileTransform)
 
-    return this.baseVertices.map(v => this.applySU11Transform(combined, v))
+    return this.baseVertices.map(v =>
+      this.applySU11Transform(combined, v),
+    )
   }
 
   /**
@@ -467,7 +477,10 @@ export class Hyperbolic2DTessellation {
       const isInverse = gen.power < 0
 
       for (let i = 0; i < count; i++) {
-        const genTransform = this.getGeneratorTransform(gen.symbol, isInverse)
+        const genTransform = this.getGeneratorTransform(
+          gen.symbol,
+          isInverse,
+        )
         transform = this.composeSU11(genTransform, transform)
       }
     }
@@ -481,7 +494,10 @@ export class Hyperbolic2DTessellation {
    * Generator 'a' = rotation by 2π/p around origin
    * Generator 'b' = rotation by 2π/q around a vertex
    */
-  private getGeneratorTransform(symbol: 'a' | 'b', inverse: boolean): Matrix {
+  private getGeneratorTransform(
+    symbol: 'a' | 'b',
+    inverse: boolean,
+  ): Matrix {
     if (symbol === 'a') {
       // Rotation around origin: simple SU(1,1) rotation
       const angle = ((inverse ? -1 : 1) * (2 * Math.PI)) / this.config.p
@@ -544,7 +560,10 @@ export class Hyperbolic2DTessellation {
       ]
 
       // Compose: fromVertex * rotation * toVertex
-      return this.composeSU11(fromVertex, this.composeSU11(rotation, toVertex))
+      return this.composeSU11(
+        fromVertex,
+        this.composeSU11(rotation, toVertex),
+      )
     }
   }
 
@@ -584,7 +603,9 @@ export class Hyperbolic2DTessellation {
   /**
    * Apply the view transform to a point.
    */
-  private applyViewTransform(point: [number, number]): [number, number] {
+  private applyViewTransform(
+    point: [number, number],
+  ): [number, number] {
     return this.applySU11Transform(this.viewTransform, point)
   }
 
