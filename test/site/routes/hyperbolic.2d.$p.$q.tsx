@@ -252,7 +252,61 @@ export default function HyperbolicTiling() {
       }
     }
 
+    // Handle double-click to navigate to a cell
+    const handleDoubleClick = (event: MouseEvent) => {
+      const tessellation = tessellationRef.current
+      const renderer = rendererRef.current
+      const controller = controllerRef.current
+      const view = viewRef.current
+
+      if (!tessellation || !renderer || !controller || !view) return
+
+      const rect = canvas.getBoundingClientRect()
+      const screenPoint = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      }
+
+      // Build current scene for hit testing
+      const visibleTiles = tessellation.getVisibleTiles()
+      const nodes = addressedTilesToNodes(visibleTiles, { hue: 220 })
+      const scene = createScene(geometryRef.current, nodes)
+      setupParentReferences(scene)
+
+      const hit = hitTest(
+        screenPoint,
+        scene,
+        view,
+        renderer.getCenterX(),
+        renderer.getCenterY(),
+        renderer.getRadius(),
+      )
+
+      if (hit) {
+        // Navigate to the clicked cell
+        const targetTransform = tessellation.navigateToCell(hit.id)
+        if (targetTransform) {
+          // Animate toward the target
+          let frame = 0
+          const maxFrames = 30
+
+          const animate = () => {
+            frame++
+            const stepTransform = tessellation.getStepTowardCell(hit.id, 0.15)
+            if (stepTransform && frame < maxFrames) {
+              view.setTransform(stepTransform)
+              tessellation.setViewTransform(stepTransform)
+              draw()
+              requestAnimationFrame(animate)
+            }
+          }
+          animate()
+        }
+      }
+    }
+
     canvas.addEventListener('click', handleClick)
+    canvas.addEventListener('dblclick', handleDoubleClick)
 
     // Initial draw
     draw()
@@ -262,6 +316,7 @@ export default function HyperbolicTiling() {
       controllerRef.current?.dispose()
       focusNavRef.current?.dispose()
       canvas.removeEventListener('click', handleClick)
+      canvas.removeEventListener('dblclick', handleDoubleClick)
     }
   }, [p, q, isHyperbolic, error])
 
