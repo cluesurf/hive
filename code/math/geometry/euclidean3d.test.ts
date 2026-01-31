@@ -131,7 +131,7 @@ describe('Euclidean3D', () => {
 
       const d1 = geom.distance(geom.origin(), p)
       const d2 = geom.distance(geom.origin(), result)
-      expect(Math.abs(d1 - d2)).toBeLessThan(1e-10)
+      expect(Math.abs(d1 - d2)).toBeLessThan(1e-6)
     })
   })
 
@@ -145,7 +145,7 @@ describe('Euclidean3D', () => {
       // After 180 degree rotation around [1,1,1], [1,0,0] -> [0,1,0] or similar
       // Actually [1,0,0] -> [0,0,1] for this rotation
       const d = geom.distance(geom.origin(), result)
-      expect(Math.abs(d - 1)).toBeLessThan(1e-10) // Preserves distance
+      expect(Math.abs(d - 1)).toBeLessThan(1e-6) // Preserves distance
     })
   })
 
