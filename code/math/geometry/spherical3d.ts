@@ -1,4 +1,4 @@
-import { Geometry } from '@/form/geometry'
+import { Geometry, type GeometryType } from '@/form/geometry'
 import type { Point } from '@/form/point'
 import type { Matrix } from '@/form/matrix'
 import { identity, multiply } from '@/form/matrix'
@@ -12,6 +12,10 @@ export class Spherical3D extends Geometry {
   readonly dimension = 3
   readonly embeddingDimension = 4
   readonly curvature = 1
+
+  getType(): GeometryType {
+    return 'spherical'
+  }
 
   origin(out?: Point): Point {
     // "North pole" of S³

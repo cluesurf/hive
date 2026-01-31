@@ -494,34 +494,88 @@ function hlerp(a: Point, b: Point, t: number): Point {
 }
 ```
 
-## Scene Graph
+## Scene Graph (Implemented)
+
+The scene graph is in `code/rendering/scene.ts`. It uses a flat, data-oriented
+design optimized for rendering:
 
 ```typescript
 interface SceneNode {
-  transform: Matrix3 | Matrix4
-  children: SceneNode[]
+  id: string
+  type: string
   visible: boolean
-
-  // Override in subclasses
-  render(ctx: RenderContext): void
+  depth: number      // z-ordering (lower = render first)
+  children: SceneNode[]
 }
 
-interface TilingNode extends SceneNode {
-  tiling: Tiling
-  style: TileStyle
+// Concrete node types
+interface PolygonNode extends SceneNode {
+  type: 'polygon'
+  vertices: Point[]
+  fillColor: string | null
+  strokeColor: string | null
+  strokeWidth: number
 }
 
-interface ShapeNode extends SceneNode {
-  shape: Polygon | Circle | ...
-  style: ShapeStyle
-}
+interface PathNode extends SceneNode { type: 'path'; points: Point[]; ... }
+interface PointNode extends SceneNode { type: 'point'; position: Point; ... }
+interface TextNode extends SceneNode { type: 'text'; text: string; ... }
+interface GroupNode extends SceneNode { type: 'group'; transform: Matrix | null }
 
 interface Scene {
-  root: SceneNode
-  camera: Camera2D | Camera3D
+  nodes: AnyNode[]
+  geometry: Geometry   // The geometry used for coordinate system
+  bounds?: { min: Point; max: Point }
+}
 
-  add(node: SceneNode): void
-  render(): void
-  pick(x: number, y: number): SceneNode | null
+// Factory functions for creating nodes
+createPolygon(id, vertices, options?)
+createPath(id, points, options?)
+createPoint(id, position, options?)
+createText(id, position, text, options?)
+createGroup(id, children?, options?)
+
+// Flatten scene graph for rendering (sorts by depth)
+flattenScene(scene): AnyNode[]
+```
+
+## Rendering Pipeline (Implemented)
+
+The rendering system is in `code/rendering/`:
+
+- `colors.ts` - Tailwind color constants and defaults
+- `projection.ts` - Screen coordinate conversions, re-exports math projections
+- `scene.ts` - Scene graph types and factory functions
+- `canvas2d.ts` - Canvas 2D renderer
+
+Geometric projections are in `code/math/projection.ts`:
+
+- `hyperboloidToPoincare()` / `poincareToHyperboloid()`
+- `hyperboloidToKlein()` / `kleinToHyperboloid()`
+- `poincareToKlein()` / `kleinToPoincare()`
+- `sphereToStereographic()` / `stereographicToSphere()`
+- `sphereToOrthographic()`
+- `isInsideDisk()`
+
+### Canvas2DRenderer
+
+```typescript
+class Canvas2DRenderer {
+  constructor(canvas: HTMLCanvasElement, config?: Partial<Renderer2DConfig>)
+
+  setConfig(config: Partial<Renderer2DConfig>): void
+  resize(width: number, height: number): void
+  clear(): void
+  drawDiskBoundary(color?, lineWidth?): void
+  render(scene: Scene): void
+  drawInfo(lines: string[]): void
+  getCenter(): [number, number]
+  getRadius(): number
+  getContext(): CanvasRenderingContext2D
 }
 ```
+
+The renderer automatically handles projection based on `scene.geometry.getType()`:
+- `'hyperbolic'` - Projects from hyperboloid to Poincare disk
+- `'euclidean'` - Maps [-1, 1] to disk radius
+- `'spherical'` - Stereographic projection from sphere

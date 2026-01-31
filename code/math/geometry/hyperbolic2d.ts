@@ -1,4 +1,4 @@
-import { Geometry } from '@/form/geometry'
+import { Geometry, type GeometryType } from '@/form/geometry'
 import type { Point } from '@/form/point'
 import type { Matrix } from '@/form/matrix'
 import { identity, multiply } from '@/form/matrix'
@@ -12,6 +12,10 @@ export class Hyperbolic2D extends Geometry {
   readonly dimension = 2
   readonly embeddingDimension = 3
   readonly curvature = -1
+
+  getType(): GeometryType {
+    return 'hyperbolic'
+  }
 
   origin(out?: Point): Point {
     if (out) {

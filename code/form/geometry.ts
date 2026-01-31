@@ -2,6 +2,11 @@ import type { Point } from './point'
 import type { Matrix } from './matrix'
 
 /**
+ * Geometry type identifier.
+ */
+export type GeometryType = 'euclidean' | 'hyperbolic' | 'spherical'
+
+/**
  * Abstract base class for all geometries.
  * Implementations provide specific math for hyperbolic, Euclidean, or spherical space.
  *
@@ -18,6 +23,9 @@ export abstract class Geometry {
 
   /** Curvature: -1 for hyperbolic, 0 for Euclidean, 1 for spherical */
   abstract readonly curvature: number
+
+  /** Get the type identifier for this geometry */
+  abstract getType(): GeometryType
 
   /** Get the origin point of this geometry */
   abstract origin(out?: Point): Point

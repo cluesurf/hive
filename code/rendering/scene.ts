@@ -1,6 +1,17 @@
 import type { Point } from '@/form/point'
 import type { Matrix } from '@/form/matrix'
 import type { Geometry } from '@/form/geometry'
+import {
+  DEFAULT_FILL_COLOR,
+  DEFAULT_STROKE_COLOR,
+  DEFAULT_PATH_STROKE_COLOR,
+  DEFAULT_POINT_FILL_COLOR,
+  DEFAULT_TEXT_COLOR,
+  DEFAULT_STROKE_WIDTH,
+  DEFAULT_POINT_RADIUS,
+  DEFAULT_FONT_SIZE,
+  DEFAULT_FONT_FAMILY,
+} from './colors'
 
 /**
  * Base node in the scene graph.
@@ -162,9 +173,9 @@ export function createPolygon(
     id,
     type: 'polygon',
     vertices,
-    fillColor: options.fillColor ?? 'rgb(51, 65, 85)', // slate700
-    strokeColor: options.strokeColor ?? 'rgb(71, 85, 105)', // slate600
-    strokeWidth: options.strokeWidth ?? 1,
+    fillColor: options.fillColor ?? DEFAULT_FILL_COLOR,
+    strokeColor: options.strokeColor ?? DEFAULT_STROKE_COLOR,
+    strokeWidth: options.strokeWidth ?? DEFAULT_STROKE_WIDTH,
     depth: options.depth ?? 0,
     visible: options.visible ?? true,
     children: [],
@@ -191,8 +202,8 @@ export function createPath(
     type: 'path',
     points,
     closed: options.closed ?? false,
-    strokeColor: options.strokeColor ?? 'rgb(148, 163, 184)', // slate400
-    strokeWidth: options.strokeWidth ?? 1,
+    strokeColor: options.strokeColor ?? DEFAULT_PATH_STROKE_COLOR,
+    strokeWidth: options.strokeWidth ?? DEFAULT_STROKE_WIDTH,
     lineDash: options.lineDash ?? [],
     depth: options.depth ?? 0,
     visible: options.visible ?? true,
@@ -218,8 +229,8 @@ export function createPoint(
     id,
     type: 'point',
     position,
-    radius: options.radius ?? 4,
-    fillColor: options.fillColor ?? 'rgb(96, 165, 250)', // blue400
+    radius: options.radius ?? DEFAULT_POINT_RADIUS,
+    fillColor: options.fillColor ?? DEFAULT_POINT_FILL_COLOR,
     strokeColor: options.strokeColor ?? null,
     depth: options.depth ?? 0,
     visible: options.visible ?? true,
@@ -248,9 +259,9 @@ export function createText(
     type: 'text',
     position,
     text,
-    fontSize: options.fontSize ?? 14,
-    fontFamily: options.fontFamily ?? 'sans-serif',
-    color: options.color ?? 'rgb(148, 163, 184)', // slate400
+    fontSize: options.fontSize ?? DEFAULT_FONT_SIZE,
+    fontFamily: options.fontFamily ?? DEFAULT_FONT_FAMILY,
+    color: options.color ?? DEFAULT_TEXT_COLOR,
     align: options.align ?? 'center',
     depth: options.depth ?? 0,
     visible: options.visible ?? true,

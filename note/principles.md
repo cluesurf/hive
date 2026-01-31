@@ -62,6 +62,24 @@ code/math/model/hyperboloid/2d.ts
 code/math/model/spherical/3d.ts
 ```
 
+### No Re-exports
+
+Never re-export from another module. Always import from the original
+source location. This keeps the dependency graph clear and makes it
+obvious where things come from.
+
+```typescript
+// Good: Import from original source
+import { hyperboloidToPoincare } from '@/math/projection'
+
+// Avoid: Re-exporting in another module
+// rendering/projection.ts
+export { hyperboloidToPoincare } from '@/math/projection'  // Don't do this
+
+// Avoid: Importing from re-exported location
+import { hyperboloidToPoincare } from '@/rendering/projection'  // Don't do this
+```
+
 ## Data Types
 
 ### Points as Number Arrays

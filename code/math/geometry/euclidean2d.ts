@@ -1,4 +1,4 @@
-import { Geometry } from '@/form/geometry'
+import { Geometry, type GeometryType } from '@/form/geometry'
 import type { Point } from '@/form/point'
 import type { Matrix } from '@/form/matrix'
 import {
@@ -17,6 +17,10 @@ export class Euclidean2D extends Geometry {
   readonly dimension = 2
   readonly embeddingDimension = 2
   readonly curvature = 0
+
+  getType(): GeometryType {
+    return 'euclidean'
+  }
 
   origin(out?: Point): Point {
     if (out) {

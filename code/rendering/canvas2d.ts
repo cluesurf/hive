@@ -1,10 +1,26 @@
-import type { Scene, AnyNode, PolygonNode, PathNode, PointNode, TextNode, GroupNode } from './scene'
+import type {
+  Scene,
+  AnyNode,
+  PolygonNode,
+  PathNode,
+  PointNode,
+  TextNode,
+  GroupNode,
+} from './scene'
 import type { Renderer2DConfig } from './types'
-import { hyperboloidToPoincare, diskToCanvas, isInsideDisk } from './projection'
+import { diskToCanvas } from './projection'
+import { hyperboloidToPoincare, isInsideDisk } from '@/math/projection'
 import { flattenScene } from './scene'
+import {
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_BOUNDARY_COLOR,
+  DEFAULT_BOUNDARY_LINE_WIDTH,
+  DEFAULT_INFO_COLOR,
+  DEFAULT_INFO_FONT,
+  DEFAULT_ZOOM,
+} from './colors'
 import type { Point } from '@/form/point'
 import type { Matrix } from '@/form/matrix'
-import { multiply, applyToPoint } from '@/form/matrix'
 
 /**
  * Canvas 2D renderer for scene graphs.
@@ -21,7 +37,10 @@ export class Canvas2DRenderer {
   private tempPoincare: [number, number] = [0, 0]
   private tempCanvas: [number, number] = [0, 0]
 
-  constructor(canvas: HTMLCanvasElement, config?: Partial<Renderer2DConfig>) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    config?: Partial<Renderer2DConfig>,
+  ) {
     const ctx = canvas.getContext('2d')
     if (!ctx) {
       throw new Error('Failed to get 2D rendering context')
@@ -31,13 +50,15 @@ export class Canvas2DRenderer {
     this.config = {
       width: config?.width ?? canvas.width,
       height: config?.height ?? canvas.height,
-      zoom: config?.zoom ?? 0.9,
-      backgroundColor: config?.backgroundColor ?? 'rgb(9, 9, 11)', // zinc950
+      zoom: config?.zoom ?? DEFAULT_ZOOM,
+      backgroundColor:
+        config?.backgroundColor ?? DEFAULT_BACKGROUND_COLOR,
     }
 
     this.centerX = this.config.width / 2
     this.centerY = this.config.height / 2
-    this.radius = Math.min(this.centerX, this.centerY) * this.config.zoom
+    this.radius =
+      Math.min(this.centerX, this.centerY) * this.config.zoom
   }
 
   /**
@@ -47,11 +68,13 @@ export class Canvas2DRenderer {
     if (config.width !== undefined) this.config.width = config.width
     if (config.height !== undefined) this.config.height = config.height
     if (config.zoom !== undefined) this.config.zoom = config.zoom
-    if (config.backgroundColor !== undefined) this.config.backgroundColor = config.backgroundColor
+    if (config.backgroundColor !== undefined)
+      this.config.backgroundColor = config.backgroundColor
 
     this.centerX = this.config.width / 2
     this.centerY = this.config.height / 2
-    this.radius = Math.min(this.centerX, this.centerY) * this.config.zoom
+    this.radius =
+      Math.min(this.centerX, this.centerY) * this.config.zoom
   }
 
   /**
@@ -62,7 +85,8 @@ export class Canvas2DRenderer {
     this.config.height = height
     this.centerX = width / 2
     this.centerY = height / 2
-    this.radius = Math.min(this.centerX, this.centerY) * this.config.zoom
+    this.radius =
+      Math.min(this.centerX, this.centerY) * this.config.zoom
   }
 
   /**
@@ -76,11 +100,20 @@ export class Canvas2DRenderer {
   /**
    * Draw the Poincare disk boundary circle.
    */
-  drawDiskBoundary(color: string = 'rgb(51, 65, 85)', lineWidth: number = 2): void { // slate700
+  drawDiskBoundary(
+    color: string = DEFAULT_BOUNDARY_COLOR,
+    lineWidth: number = DEFAULT_BOUNDARY_LINE_WIDTH,
+  ): void {
     this.ctx.strokeStyle = color
     this.ctx.lineWidth = lineWidth
     this.ctx.beginPath()
-    this.ctx.arc(this.centerX, this.centerY, this.radius, 0, Math.PI * 2)
+    this.ctx.arc(
+      this.centerX,
+      this.centerY,
+      this.radius,
+      0,
+      Math.PI * 2,
+    )
     this.ctx.stroke()
   }
 
@@ -100,7 +133,11 @@ export class Canvas2DRenderer {
   /**
    * Render a single node with accumulated transform.
    */
-  private renderNode(node: AnyNode, parentTransform: Matrix | null, scene: Scene): void {
+  private renderNode(
+    node: AnyNode,
+    parentTransform: Matrix | null,
+    scene: Scene,
+  ): void {
     switch (node.type) {
       case 'polygon':
         this.renderPolygon(node, scene)
@@ -123,7 +160,10 @@ export class Canvas2DRenderer {
   /**
    * Convert a point from geometry coordinates to canvas coordinates.
    */
-  private toCanvas(point: Point, geometryType: string): [number, number] | null {
+  private toCanvas(
+    point: Point,
+    geometryType: string,
+  ): [number, number] | null {
     if (geometryType === 'hyperbolic') {
       // Project from hyperboloid to Poincare disk
       hyperboloidToPoincare(point, this.tempPoincare)
@@ -134,7 +174,13 @@ export class Canvas2DRenderer {
       }
 
       // Convert to canvas coordinates
-      diskToCanvas(this.tempPoincare, this.centerX, this.centerY, this.radius, this.tempCanvas)
+      diskToCanvas(
+        this.tempPoincare,
+        this.centerX,
+        this.centerY,
+        this.radius,
+        this.tempCanvas,
+      )
       return [this.tempCanvas[0], this.tempCanvas[1]]
     }
 
@@ -144,7 +190,7 @@ export class Canvas2DRenderer {
       const y = point[1] ?? 0
       return [
         this.centerX + x * this.radius,
-        this.centerY - y * this.radius
+        this.centerY - y * this.radius,
       ]
     }
 
@@ -163,7 +209,7 @@ export class Canvas2DRenderer {
 
       return [
         this.centerX + u * this.radius,
-        this.centerY - v * this.radius
+        this.centerY - v * this.radius,
       ]
     }
 
@@ -192,12 +238,17 @@ export class Canvas2DRenderer {
 
     if (!anyVisible || canvasPoints.length < 3) return
 
+    const first = canvasPoints[0]
+    if (!first) return
+
     this.ctx.beginPath()
-    this.ctx.moveTo(canvasPoints[0][0], canvasPoints[0][1])
+    this.ctx.moveTo(first[0], first[1])
 
     for (let i = 1; i < canvasPoints.length; i++) {
+      const pt = canvasPoints[i]
+      if (!pt) continue
       // TODO: For hyperbolic geometry, draw geodesic arcs instead of straight lines
-      this.ctx.lineTo(canvasPoints[i][0], canvasPoints[i][1])
+      this.ctx.lineTo(pt[0], pt[1])
     }
     this.ctx.closePath()
 
@@ -229,11 +280,16 @@ export class Canvas2DRenderer {
 
     if (canvasPoints.length < 2) return
 
+    const first = canvasPoints[0]
+    if (!first) return
+
     this.ctx.beginPath()
-    this.ctx.moveTo(canvasPoints[0][0], canvasPoints[0][1])
+    this.ctx.moveTo(first[0], first[1])
 
     for (let i = 1; i < canvasPoints.length; i++) {
-      this.ctx.lineTo(canvasPoints[i][0], canvasPoints[i][1])
+      const pt = canvasPoints[i]
+      if (!pt) continue
+      this.ctx.lineTo(pt[0], pt[1])
     }
 
     if (node.closed && canvasPoints.length > 2) {
@@ -259,7 +315,13 @@ export class Canvas2DRenderer {
     if (!canvasPoint) return
 
     this.ctx.beginPath()
-    this.ctx.arc(canvasPoint[0], canvasPoint[1], node.radius, 0, Math.PI * 2)
+    this.ctx.arc(
+      canvasPoint[0],
+      canvasPoint[1],
+      node.radius,
+      0,
+      Math.PI * 2,
+    )
     this.ctx.fillStyle = node.fillColor
     this.ctx.fill()
 
@@ -290,12 +352,15 @@ export class Canvas2DRenderer {
    * Draw debug info on the canvas.
    */
   drawInfo(lines: string[], x: number = 16, startY: number = 28): void {
-    this.ctx.fillStyle = 'rgb(148, 163, 184)' // slate400
-    this.ctx.font = '14px Inter, sans-serif'
+    this.ctx.fillStyle = DEFAULT_INFO_COLOR
+    this.ctx.font = DEFAULT_INFO_FONT
     this.ctx.textAlign = 'left'
 
     for (let i = 0; i < lines.length; i++) {
-      this.ctx.fillText(lines[i], x, startY + i * 20)
+      const line = lines[i]
+      if (line) {
+        this.ctx.fillText(line, x, startY + i * 20)
+      }
     }
   }
 
