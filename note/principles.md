@@ -104,9 +104,9 @@ projection (Poincare, Klein, stereographic).
 
 ### Avoid Allocation in Hot Paths
 
-Functions called frequently (transforms, matrix operations) should accept
-an output array parameter rather than allocating new arrays. This reduces
-garbage collection pressure. Follow the gl-matrix pattern.
+Functions called frequently (transforms, matrix operations) should
+accept an output array parameter rather than allocating new arrays. This
+reduces garbage collection pressure. Follow the gl-matrix pattern.
 
 ```typescript
 // Good: Output parameter avoids allocation
