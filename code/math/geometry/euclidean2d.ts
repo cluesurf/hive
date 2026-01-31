@@ -73,7 +73,11 @@ export class Euclidean2D extends Geometry {
     return [c, -s, 0, s, c, 0, 0, 0, 1]
   }
 
-  translation(direction: Point, distance: number, out?: Matrix): Matrix {
+  translation(
+    direction: Point,
+    distance: number,
+    out?: Matrix,
+  ): Matrix {
     const len = Math.sqrt(
       (direction[0] ?? 0) ** 2 + (direction[1] ?? 0) ** 2,
     )
@@ -184,6 +188,7 @@ export class Euclidean2D extends Geometry {
     const len = Math.sqrt(
       (direction[0] ?? 0) ** 2 + (direction[1] ?? 0) ** 2,
     )
+
     if (len < 1e-10) {
       if (out) {
         out[0] = origin[0] ?? 0
