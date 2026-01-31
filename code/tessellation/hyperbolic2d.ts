@@ -1,22 +1,48 @@
 /**
- * HyperRogue-style hyperbolic tessellation.
+ * HyperRogue-style hyperbolic tessellation with Margenstern coordinates.
  *
- * Key principles (from HyperRogue):
- * 1. Cells are graph nodes with direct neighbor pointers - no coordinates
- * 2. Neighbors created lazily on first access via move()
- * 3. BFS from current position each frame to find visible cells
- * 4. Transforms computed only for rendering, not for navigation
+ * Combines two addressing approaches:
+ * 1. Graph-based pointers (HyperRogue style) for efficient navigation
+ * 2. Algebraic addresses (Margenstern style) for stable tile identity
+ *
+ * Key principles:
+ * - Cells are graph nodes with direct neighbor pointers
+ * - Neighbors created lazily on first access via move()
+ * - Each cell has an algebraic address (sector, treeIndex)
+ * - Addresses enable O(1) neighbor computation via Margenstern formulas
+ * - Transforms computed only for rendering, not for navigation
+ *
+ * References:
+ * - Margenstern (2011). "Coordinates for a new triangular tiling"
+ * - Margenstern (2007/2008). "Cellular Automata in Hyperbolic Spaces"
  */
 
 import type { Matrix } from '@/form/matrix'
 
 /**
- * A cell in the tessellation - HyperRogue style.
- * No coordinates stored - just neighbor pointers.
+ * Margenstern address: sector + tree index.
+ */
+export interface MargensternAddress {
+  /** Sector number: 0 = central tile, 1..numSectors for sectors */
+  sector: number
+  /** Tree coordinate within sector (0n for sector leader) */
+  treeIndex: bigint
+}
+
+/**
+ * Node type in spanning tree (for branching rules).
+ */
+type NodeType = 'white' | 'black'
+
+/**
+ * A cell in the tessellation - hybrid HyperRogue + Margenstern style.
  */
 export interface Cell {
-  /** Unique ID (for debugging/display) */
+  /** Unique numeric ID (for fast lookup) */
   id: number
+
+  /** Margenstern address (sector, treeIndex) */
+  address: MargensternAddress
 
   /** Direct pointers to neighbors (created lazily) */
   neighbors: (Cell | null)[]
@@ -39,7 +65,9 @@ export interface Cell {
  */
 export interface VisibleTile {
   id: string
+  address: string // Margenstern address string "sector:treeIndex"
   vertices: Array<[number, number]>
+  depth: number
 }
 
 /**
@@ -50,6 +78,17 @@ export interface TessellationConfig {
   q: number
   maxTiles: number
   maxDepth: number
+}
+
+/**
+ * Derived configuration from {p,q} for Margenstern system.
+ */
+interface MargensternConfig {
+  h: number // h = q/2 for even q, h = (q-1)/2 for odd q
+  isEvenQ: boolean
+  numSectors: number // Number of sectors around central tile
+  ordinaryChildren: number // Children for ordinary nodes
+  specialChildren: number // Children for special nodes
 }
 
 const DEFAULT_CONFIG: TessellationConfig = {
@@ -65,10 +104,27 @@ export { DEFAULT_CONFIG as DEFAULT_TESSELLATION_CONFIG }
 export type { Cell as Tile }
 
 /**
- * HyperRogue-style tessellation manager.
+ * Precomputed Fibonacci numbers for efficient Zeckendorf representation.
+ */
+const MAX_FIB_INDEX = 150
+const FIB: bigint[] = []
+;(() => {
+  FIB[0] = 1n
+  FIB[1] = 1n
+  for (let i = 2; i <= MAX_FIB_INDEX; i++) {
+    FIB[i] = FIB[i - 1]! + FIB[i - 2]!
+  }
+})()
+
+/**
+ * Hyperbolic tessellation manager with Margenstern coordinates.
+ *
+ * Combines HyperRogue-style graph navigation with Margenstern's
+ * algebraic addressing for stable tile identity.
  */
 export class Hyperbolic2DTessellation {
   private config: TessellationConfig
+  private margensternConfig: MargensternConfig
   private nextId: number = 0
   private origin: Cell
   private centerCell: Cell
@@ -80,14 +136,21 @@ export class Hyperbolic2DTessellation {
   private baseVertices: Array<[number, number]> = []
   private edgeTransforms: Matrix[] = []
 
-  // Cell lookup by transform hash (to detect duplicates)
-  private cellByHash: Map<string, Cell> = new Map()
+  // Cell lookups
+  private cellByHash: Map<string, Cell> = new Map() // By transform hash
+  private cellByAddress: Map<string, Cell> = new Map() // By Margenstern address
+
+  // Caches for Margenstern computations
+  private nodeTypeCache: Map<string, NodeType> = new Map()
+  private fatherCache: Map<string, bigint> = new Map()
+  private preferredSonCache: Map<string, bigint> = new Map()
 
   // Frame counter for visibility tracking
   private frameCount: number = 0
 
   constructor(config: Partial<TessellationConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
+    this.margensternConfig = this.computeMargensternConfig()
 
     // Compute base polygon vertices
     this.baseVertices = this.computeBaseVertices()
@@ -95,19 +158,76 @@ export class Hyperbolic2DTessellation {
     // Precompute edge crossing transforms
     this.edgeTransforms = this.computeEdgeTransforms()
 
-    // Create origin cell
+    // Create origin cell (central tile)
     const originTransform: Matrix = [1, 0, 0, 0, 0, 0, 0, 0, 1]
-    this.origin = this.createCell(0, originTransform)
+    const originAddress: MargensternAddress = { sector: 0, treeIndex: 0n }
+    this.origin = this.createCell(0, originTransform, originAddress)
     this.cellByHash.set(this.hashTransform(originTransform), this.origin)
+    this.cellByAddress.set(this.addressToString(originAddress), this.origin)
     this.centerCell = this.origin
   }
 
   /**
-   * Create a new cell.
+   * Compute Margenstern configuration from {p,q}.
    */
-  private createCell(distance: number, transform: Matrix | null): Cell {
+  private computeMargensternConfig(): MargensternConfig {
+    const { p, q } = this.config
+    const isEvenQ = q % 2 === 0
+    const h = isEvenQ ? q / 2 : Math.floor(q / 2)
+
+    // Number of sectors: for {7,3} and {5,4}, it's p
+    // For general case, it's p * (h - 1)
+    let numSectors: number
+    if (q === 3 || q === 4) {
+      numSectors = p
+    } else {
+      numSectors = p * (h - 1)
+    }
+
+    // Branching counts based on Margenstern formulas
+    let ordinaryChildren: number
+    let specialChildren: number
+
+    if (isEvenQ) {
+      // For even q: ordinary = (p-3)(h-1)+1, special = (p-2)(h-1)-1
+      ordinaryChildren = (p - 3) * (h - 1) + 1
+      specialChildren = (p - 2) * (h - 1) - 1
+    } else {
+      // For odd q (including q=3): different formulas
+      ordinaryChildren = (p - 3) * (h - 1) + 2
+      specialChildren = (p - 3) * (h - 1) + 1
+    }
+
+    // For {7,3}: h=1, ordinary=3, special=2 (white/black nodes)
+    // For {5,4}: h=2, ordinary=3, special=2
+    if (q === 3) {
+      ordinaryChildren = 3
+      specialChildren = 2
+    } else if (q === 4) {
+      ordinaryChildren = 3
+      specialChildren = 2
+    }
+
+    return {
+      h,
+      isEvenQ,
+      numSectors,
+      ordinaryChildren,
+      specialChildren,
+    }
+  }
+
+  /**
+   * Create a new cell with Margenstern address.
+   */
+  private createCell(
+    distance: number,
+    transform: Matrix | null,
+    address: MargensternAddress,
+  ): Cell {
     return {
       id: this.nextId++,
+      address,
       neighbors: new Array(this.config.p).fill(null),
       neighborSpins: new Array(this.config.p).fill(-1),
       distance,
@@ -116,8 +236,224 @@ export class Hyperbolic2DTessellation {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // MARGENSTERN COORDINATE SYSTEM
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Convert address to string key.
+   */
+  addressToString(addr: MargensternAddress): string {
+    return `${addr.sector}:${addr.treeIndex}`
+  }
+
+  /**
+   * Parse address from string.
+   */
+  parseAddress(s: string): MargensternAddress {
+    const parts = s.split(':')
+    return {
+      sector: parseInt(parts[0]!, 10),
+      treeIndex: BigInt(parts[1] ?? '0'),
+    }
+  }
+
+  /**
+   * Determine node type (white=3 children, black=2 children).
+   * Based on Zeckendorf representation trailing pattern.
+   */
+  private getNodeType(treeIndex: bigint): NodeType {
+    const key = treeIndex.toString()
+    const cached = this.nodeTypeCache.get(key)
+    if (cached) return cached
+
+    const zeck = this.toZeckendorf(treeIndex)
+    let nodeType: NodeType
+
+    if (zeck.length === 0) {
+      nodeType = 'white'
+    } else {
+      // Last index parity determines type
+      const lastIndex = zeck[zeck.length - 1]!
+      nodeType = lastIndex % 2 === 0 ? 'white' : 'black'
+    }
+
+    this.nodeTypeCache.set(key, nodeType)
+    return nodeType
+  }
+
+  /**
+   * Convert number to Zeckendorf (Fibonacci) representation.
+   * Returns array of indices where coefficient is 1.
+   */
+  private toZeckendorf(n: bigint): number[] {
+    if (n <= 0n) return []
+    if (n === 1n) return [0]
+
+    const result: number[] = []
+    let remaining = n
+
+    for (let i = MAX_FIB_INDEX; i >= 0 && remaining > 0n; i--) {
+      const fibI = FIB[i]!
+      if (fibI <= remaining) {
+        result.push(i)
+        remaining -= fibI
+        i-- // Skip next to maintain non-consecutive property
+      }
+    }
+
+    return result.reverse()
+  }
+
+  /**
+   * Convert Zeckendorf indices back to number.
+   */
+  private fromZeckendorf(indices: number[]): bigint {
+    let result = 0n
+    for (const i of indices) {
+      if (i >= 0 && i <= MAX_FIB_INDEX) {
+        result += FIB[i]!
+      }
+    }
+    return result
+  }
+
+  /**
+   * Compute father (parent in tree) using Margenstern formula.
+   * f(n) ≈ n / φ²
+   */
+  private computeFather(n: bigint): bigint {
+    if (n <= 0n) return 0n
+
+    const key = n.toString()
+    const cached = this.fatherCache.get(key)
+    if (cached !== undefined) return cached
+
+    const zeck = this.toZeckendorf(n)
+    if (zeck.length === 0) {
+      this.fatherCache.set(key, 0n)
+      return 0n
+    }
+
+    // Shift indices down by 2 (divide by φ²)
+    const fatherZeck = zeck.map(i => i - 2).filter(i => i >= 0)
+    const result = fatherZeck.length === 0 ? 0n : this.fromZeckendorf(fatherZeck)
+
+    this.fatherCache.set(key, result)
+    return result
+  }
+
+  /**
+   * Compute preferred son (σ function) using Margenstern formula.
+   * σ(n) ≈ n × φ²
+   */
+  private computePreferredSon(n: bigint): bigint {
+    if (n < 0n) return 0n
+
+    const key = n.toString()
+    const cached = this.preferredSonCache.get(key)
+    if (cached !== undefined) return cached
+
+    const zeck = this.toZeckendorf(n)
+    // Shift indices up by 2 (multiply by φ²)
+    const sonZeck = zeck.map(i => i + 2)
+    const result = sonZeck.length === 0 ? 2n : this.fromZeckendorf(sonZeck)
+
+    this.preferredSonCache.set(key, result)
+    return result
+  }
+
+  /**
+   * Compute neighbor address using Margenstern's neighbor formulas.
+   * This is the core algorithmic contribution from the paper.
+   */
+  private computeNeighborAddress(
+    addr: MargensternAddress,
+    direction: number,
+  ): MargensternAddress {
+    const { sector, treeIndex } = addr
+    const { p } = this.config
+    const { numSectors } = this.margensternConfig
+    const dir = ((direction % p) + p) % p
+
+    // Modular sector arithmetic
+    const sectorPlus = (s: number, delta: number): number => {
+      if (s === 0) return 0
+      const result = ((s - 1 + delta) % numSectors + numSectors) % numSectors + 1
+      return result
+    }
+
+    // Central tile case
+    if (sector === 0) {
+      // Neighbors of central tile are sector leaders
+      const neighborSector = (dir % numSectors) + 1
+      return { sector: neighborSector, treeIndex: 0n }
+    }
+
+    // Sector leader case
+    if (treeIndex === 0n) {
+      if (dir === 0) {
+        // Direction 0: back to central tile
+        return { sector: 0, treeIndex: 0n }
+      } else if (dir === 1) {
+        // Left boundary: adjacent sector
+        return { sector: sectorPlus(sector, -1), treeIndex: 0n }
+      } else if (dir === p - 1) {
+        // Right boundary: adjacent sector
+        return { sector: sectorPlus(sector, 1), treeIndex: 0n }
+      } else {
+        // Children
+        const s = this.computePreferredSon(0n)
+        const childOffset = BigInt(dir - 2)
+        return { sector, treeIndex: s + childOffset }
+      }
+    }
+
+    // General tile case using Margenstern Table 2
+    const f = this.computeFather(treeIndex)
+    const s = this.computePreferredSon(treeIndex)
+    const nodeType = this.getNodeType(treeIndex)
+
+    // For {7,3} heptagrid, directions are:
+    // 0: father, 1-2: siblings/uncles, 3-5: children, 6: sibling
+    if (nodeType === 'white') {
+      // White node (3 children)
+      switch (dir) {
+        case 0: return { sector, treeIndex: f } // father
+        case 1: return { sector, treeIndex: treeIndex - 1n > 0n ? treeIndex - 1n : 0n } // left sibling
+        case 2: return { sector, treeIndex: s - 1n > 0n ? s - 1n : s } // before preferred son
+        case 3: return { sector, treeIndex: s } // preferred son
+        case 4: return { sector, treeIndex: s + 1n } // after preferred son
+        case 5: return { sector, treeIndex: s + 2n } // rightmost child
+        case 6: return { sector, treeIndex: treeIndex + 1n } // right sibling
+        default: return { sector, treeIndex: s + BigInt(dir - 3) }
+      }
+    } else {
+      // Black node (2 children)
+      switch (dir) {
+        case 0: return { sector, treeIndex: f } // father
+        case 1: return { sector, treeIndex: f > 0n ? f - 1n : 0n } // father's sibling
+        case 2: return { sector, treeIndex: treeIndex - 1n > 0n ? treeIndex - 1n : 0n } // left sibling
+        case 3: return { sector, treeIndex: s } // preferred son
+        case 4: return { sector, treeIndex: s + 1n } // other child
+        case 5: return { sector, treeIndex: s + 2n } // nephew
+        case 6: return { sector, treeIndex: treeIndex + 1n } // right sibling
+        default: return { sector, treeIndex: s + BigInt(dir - 3) }
+      }
+    }
+  }
+
+  /**
+   * Get cell by Margenstern address, creating if needed.
+   */
+  getCellByAddress(addr: MargensternAddress): Cell | null {
+    const key = this.addressToString(addr)
+    return this.cellByAddress.get(key) ?? null
+  }
+
   /**
    * Get or create neighbor in direction d (HyperRogue's cmove).
+   * Combines graph-based navigation with Margenstern address computation.
    */
   private move(cell: Cell, d: number): Cell {
     const dir = ((d % this.config.p) + this.config.p) % this.config.p
@@ -127,29 +463,44 @@ export class Hyperbolic2DTessellation {
       return cell.neighbors[dir]!
     }
 
-    // Compute the neighbor's transform
-    const cellTransform = cell.transform
-    if (!cellTransform) {
-      // Should never happen - cells always have transforms
-      return cell
-    }
-    const neighborTransform = this.composeSU11(
-      this.edgeTransforms[dir]!,
-      cellTransform,
-    )
+    // Compute the neighbor's Margenstern address
+    const neighborAddress = this.computeNeighborAddress(cell.address, dir)
+    const addressKey = this.addressToString(neighborAddress)
 
-    // Check if this cell already exists (via transform hash)
-    const hash = this.hashTransform(neighborTransform)
-    let neighbor = this.cellByHash.get(hash)
+    // Check if this cell already exists by address
+    let neighbor = this.cellByAddress.get(addressKey)
 
     if (!neighbor) {
-      // Create new cell
-      neighbor = this.createCell(cell.distance + 1, neighborTransform)
-      this.cellByHash.set(hash, neighbor)
+      // Compute the neighbor's transform
+      const cellTransform = cell.transform
+      if (!cellTransform) {
+        return cell
+      }
+      const neighborTransform = this.composeSU11(
+        this.edgeTransforms[dir]!,
+        cellTransform,
+      )
+
+      // Also check by transform hash (for consistency)
+      const hash = this.hashTransform(neighborTransform)
+      neighbor = this.cellByHash.get(hash)
+
+      if (!neighbor) {
+        // Create new cell with both address and transform
+        neighbor = this.createCell(
+          cell.distance + 1,
+          neighborTransform,
+          neighborAddress,
+        )
+        this.cellByHash.set(hash, neighbor)
+        this.cellByAddress.set(addressKey, neighbor)
+      } else {
+        // Cell exists by hash but not address - update address mapping
+        this.cellByAddress.set(addressKey, neighbor)
+      }
     }
 
     // Find which edge of the neighbor connects back to us
-    // For regular tilings, it's the opposite edge (rotated by π)
     const backDir = this.findBackDirection(dir)
 
     // Connect them bidirectionally
@@ -269,7 +620,12 @@ export class Hyperbolic2DTessellation {
       const isVisible = vertices.some(([u, v]) => u * u + v * v < 0.98)
 
       if (isVisible) {
-        visible.push({ id: String(cell.id), vertices })
+        visible.push({
+          id: String(cell.id),
+          address: this.addressToString(cell.address),
+          vertices,
+          depth: cell.distance,
+        })
         visibleCells.push(cell)
         cell.lastSeenFrame = this.frameCount
         // Update center cell to this visible cell for next frame
@@ -306,7 +662,12 @@ export class Hyperbolic2DTessellation {
         const isVisible = vertices.some(([u, v]) => u * u + v * v < 0.98)
 
         if (isVisible) {
-          visible.push({ id: String(neighbor.id), vertices })
+          visible.push({
+            id: String(neighbor.id),
+            address: this.addressToString(neighbor.address),
+            vertices,
+            depth: neighbor.distance,
+          })
           visibleCells.push(neighbor)
           neighbor.lastSeenFrame = this.frameCount
         }

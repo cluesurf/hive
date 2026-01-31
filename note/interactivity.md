@@ -4,6 +4,394 @@ This document describes how mouse, keyboard, touch, and programmatic
 interactions work while maintaining separation between core computation
 and rendering.
 
+## Feature Configuration
+
+All interaction features are toggleable per-tessellation or globally at
+runtime. Configuration uses a hierarchical system where
+tessellation-level settings override global defaults.
+
+### Configuration Interface
+
+```typescript
+interface InteractionConfig {
+  // Mouse/touch drag panning
+  drag: {
+    enabled: boolean
+    sensitivity: number // Higher = faster response (default: 1.5)
+  }
+
+  // Momentum/throw after drag release
+  throw: {
+    enabled: boolean
+    sensitivity: number // Higher = more momentum (default: 1.2)
+    friction: number // 0-1, higher = stops faster (default: 0.92)
+  }
+
+  // Zoom via scroll/pinch
+  zoom: {
+    enabled: boolean
+    sensitivity: number // Default: 1.0
+    min: number // Minimum zoom level (default: 0.1)
+    max: number // Maximum zoom level (default: 10)
+  }
+
+  // Two-finger rotation gesture
+  rotate: {
+    enabled: boolean
+    sensitivity: number // Default: 1.0
+  }
+
+  // Tile selection on click/tap
+  select: {
+    enabled: boolean
+    multi: boolean // Allow multi-select with modifier key
+  }
+
+  // Auto-navigate to selected tile (animate to center)
+  navigate: {
+    enabled: boolean
+    duration: number // Animation duration in ms (default: 300)
+    easing: EasingFunction // Default: easeInOutCubic
+  }
+
+  // Hover detection
+  hover: {
+    enabled: boolean
+  }
+
+  // Keyboard navigation
+  keyboard: {
+    enabled: boolean
+    arrowKeys: boolean // Navigate between tiles with arrows
+    escapeDeselects: boolean
+    focusKey: string // Key to focus on selected tile (default: 'f')
+  }
+}
+```
+
+### Default Configuration
+
+```typescript
+const DEFAULT_CONFIG: InteractionConfig = {
+  drag: {
+    enabled: true,
+    sensitivity: 1.5,
+  },
+  throw: {
+    enabled: true,
+    sensitivity: 1.2,
+    friction: 0.92,
+  },
+  zoom: {
+    enabled: true,
+    sensitivity: 1.0,
+    min: 0.1,
+    max: 10,
+  },
+  rotate: {
+    enabled: true,
+    sensitivity: 1.0,
+  },
+  select: {
+    enabled: true,
+    multi: false,
+  },
+  navigate: {
+    enabled: true,
+    duration: 300,
+    easing: Easing.easeInOutCubic,
+  },
+  hover: {
+    enabled: true,
+  },
+  keyboard: {
+    enabled: true,
+    arrowKeys: true,
+    escapeDeselects: true,
+    focusKey: 'f',
+  },
+}
+```
+
+### Per-Tessellation Configuration
+
+Each tessellation can have its own interaction config that overrides
+global defaults:
+
+```typescript
+interface Tessellation {
+  id: string
+  tiling: Tiling
+  config: Partial<InteractionConfig> // Override specific settings
+}
+
+class TessellationManager {
+  private globalConfig: InteractionConfig
+  private tessellations: Map<string, Tessellation>
+
+  // Get effective config for a tessellation (merged with global)
+  getConfig(tessellationId: string): InteractionConfig {
+    const tess = this.tessellations.get(tessellationId)
+    if (!tess) return this.globalConfig
+    return deepMerge(this.globalConfig, tess.config)
+  }
+
+  // Update global config at runtime
+  setGlobalConfig(config: Partial<InteractionConfig>): void {
+    this.globalConfig = deepMerge(this.globalConfig, config)
+  }
+
+  // Update per-tessellation config at runtime
+  setTessellationConfig(
+    tessellationId: string,
+    config: Partial<InteractionConfig>,
+  ): void {
+    const tess = this.tessellations.get(tessellationId)
+    if (tess) {
+      tess.config = deepMerge(tess.config, config)
+    }
+  }
+
+  // Apply config to multiple tessellations
+  applyConfigToMany(
+    ids: string[],
+    config: Partial<InteractionConfig>,
+  ): void {
+    for (const id of ids) {
+      this.setTessellationConfig(id, config)
+    }
+  }
+
+  // Apply config to all tessellations
+  applyConfigToAll(config: Partial<InteractionConfig>): void {
+    this.setGlobalConfig(config)
+  }
+}
+```
+
+### Runtime Feature Toggling
+
+Toggle features dynamically at runtime:
+
+```typescript
+// Disable drag globally
+manager.setGlobalConfig({ drag: { enabled: false } })
+
+// Enable navigation with custom duration for one tessellation
+manager.setTessellationConfig('main', {
+  navigate: { enabled: true, duration: 500 },
+})
+
+// Disable all interaction for a tessellation
+manager.setTessellationConfig('readonly-display', {
+  drag: { enabled: false },
+  zoom: { enabled: false },
+  rotate: { enabled: false },
+  select: { enabled: false },
+  keyboard: { enabled: false },
+})
+
+// Increase sensitivity across all tessellations
+manager.applyConfigToAll({
+  drag: { sensitivity: 2.0 },
+  throw: { sensitivity: 1.5 },
+})
+```
+
+## Feature Summary
+
+| Feature  | Description                          | Default |
+| -------- | ------------------------------------ | ------- |
+| Drag     | Click/touch drag to pan the view     | On      |
+| Throw    | Momentum after releasing drag        | On      |
+| Zoom     | Scroll/pinch to zoom                 | On      |
+| Rotate   | Two-finger rotation gesture          | On      |
+| Select   | Click/tap tile to select it          | On      |
+| Navigate | Auto-animate selected tile to center | On      |
+| Hover    | Track tile under cursor              | On      |
+| Keyboard | Arrow keys, escape, focus shortcuts  | On      |
+
+## Two-Finger Rotation
+
+Rotate the tessellation orientation using a two-finger twist gesture:
+
+```typescript
+interface RotationState {
+  isRotating: boolean
+  initialAngle: number
+  lastAngle: number
+}
+
+function handleTwoFingerRotation(
+  touches: Touch[],
+  state: RotationState,
+  config: InteractionConfig,
+  onRotate: (angle: number) => void,
+): void {
+  if (touches.length !== 2 || !config.rotate.enabled) return
+
+  const currentAngle = Math.atan2(
+    touches[1].clientY - touches[0].clientY,
+    touches[1].clientX - touches[0].clientX,
+  )
+
+  if (!state.isRotating) {
+    state.isRotating = true
+    state.initialAngle = currentAngle
+    state.lastAngle = currentAngle
+    return
+  }
+
+  const deltaAngle =
+    (currentAngle - state.lastAngle) * config.rotate.sensitivity
+  state.lastAngle = currentAngle
+
+  onRotate(deltaAngle)
+}
+```
+
+## Selection and Navigation Flow
+
+When a tile is selected (by any method), the navigation behavior is:
+
+```typescript
+function selectTile(
+  tile: Tile,
+  config: InteractionConfig,
+  state: InteractionState,
+  animate: (
+    target: HyperPoint,
+    duration: number,
+    easing: EasingFunction,
+  ) => void,
+): void {
+  // Update selection state
+  if (!config.select.multi) {
+    state.selection.selectedTiles.clear()
+  }
+  state.selection.selectedTiles.add(tile)
+
+  // Navigate to tile if enabled (animate to center)
+  if (config.navigate.enabled) {
+    animate(
+      tile.center,
+      config.navigate.duration,
+      config.navigate.easing,
+    )
+  }
+}
+
+// Selection can happen from:
+// 1. Mouse click on tile
+// 2. Touch tap on tile
+// 3. Keyboard navigation (arrow keys)
+// 4. Programmatic selection via API
+// All trigger the same selectTile() function
+```
+
+## Sensitivity Tuning
+
+The sensitivity values control responsiveness. Default values have been
+tuned for natural feeling interaction:
+
+| Sensitivity | Value | Effect                            |
+| ----------- | ----- | --------------------------------- |
+| drag        | 1.5   | Screen pixels to hyperbolic units |
+| throw       | 1.2   | Initial momentum multiplier       |
+| zoom        | 1.0   | Scroll delta to zoom factor       |
+| rotate      | 1.0   | Finger angle to camera rotation   |
+
+Adjust based on use case:
+
+- **Precise editing:** Lower drag/throw sensitivity (0.5-1.0)
+- **Fast exploration:** Higher drag/throw sensitivity (2.0-3.0)
+- **Presentation mode:** Disable throw, slower navigation duration
+
+## Throw/Momentum System
+
+The throw system provides momentum after releasing a drag gesture,
+giving a natural "flick" feel:
+
+```typescript
+interface ThrowState {
+  active: boolean
+  velocity: { x: number; y: number }
+  lastTime: number
+}
+
+class ThrowHandler {
+  private state: ThrowState = {
+    active: false,
+    velocity: { x: 0, y: 0 },
+    lastTime: 0,
+  }
+
+  // Track velocity during drag
+  onDrag(dx: number, dy: number, time: number): void {
+    const dt = time - this.state.lastTime
+    if (dt > 0) {
+      // Smooth velocity tracking with exponential moving average
+      const alpha = 0.3
+      this.state.velocity.x =
+        alpha * (dx / dt) + (1 - alpha) * this.state.velocity.x
+      this.state.velocity.y =
+        alpha * (dy / dt) + (1 - alpha) * this.state.velocity.y
+    }
+    this.state.lastTime = time
+  }
+
+  // Start throw on drag release
+  onDragEnd(config: InteractionConfig): void {
+    if (!config.throw.enabled) return
+
+    // Apply sensitivity multiplier
+    this.state.velocity.x *= config.throw.sensitivity
+    this.state.velocity.y *= config.throw.sensitivity
+
+    // Only throw if velocity exceeds threshold
+    const speed = Math.sqrt(
+      this.state.velocity.x ** 2 + this.state.velocity.y ** 2,
+    )
+    if (speed > 0.1) {
+      this.state.active = true
+    }
+  }
+
+  // Update each frame
+  update(
+    dt: number,
+    config: InteractionConfig,
+    onPan: (dx: number, dy: number) => void,
+  ): boolean {
+    if (!this.state.active) return false
+
+    // Apply velocity
+    onPan(this.state.velocity.x * dt, this.state.velocity.y * dt)
+
+    // Apply friction
+    this.state.velocity.x *= config.throw.friction
+    this.state.velocity.y *= config.throw.friction
+
+    // Stop when slow enough
+    const speed = Math.sqrt(
+      this.state.velocity.x ** 2 + this.state.velocity.y ** 2,
+    )
+    if (speed < 0.01) {
+      this.state.active = false
+      this.state.velocity = { x: 0, y: 0 }
+    }
+
+    return this.state.active
+  }
+
+  // Cancel throw (e.g., when user starts new interaction)
+  cancel(): void {
+    this.state.active = false
+    this.state.velocity = { x: 0, y: 0 }
+  }
+}
+```
+
 ## Architecture Overview
 
 ```

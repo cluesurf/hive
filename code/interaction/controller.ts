@@ -13,6 +13,23 @@ import type {
 import { DEFAULT_INTERACTION_CONFIG } from './types'
 
 /**
+ * Extended configuration with rotation settings.
+ */
+export interface ExtendedInteractionConfig extends InteractionConfig {
+  /** Whether rotation via wheel deltaX is enabled */
+  rotationEnabled: boolean
+
+  /** Sensitivity for wheel-based rotation (radians per pixel) */
+  rotationSensitivity: number
+}
+
+const DEFAULT_EXTENDED_CONFIG: ExtendedInteractionConfig = {
+  ...DEFAULT_INTERACTION_CONFIG,
+  rotationEnabled: true,
+  rotationSensitivity: 0.002,
+}
+
+/**
  * Interaction controller for navigating through geometric spaces.
  *
  * This controller is geometry-agnostic. It handles mouse/touch events
@@ -29,7 +46,7 @@ import { DEFAULT_INTERACTION_CONFIG } from './types'
 export class InteractionController {
   private geometry: InteractiveGeometry
   private canvas: HTMLCanvasElement
-  private config: InteractionConfig
+  private config: ExtendedInteractionConfig
 
   private drag: DragState
   private view: ViewState
@@ -48,11 +65,11 @@ export class InteractionController {
   constructor(
     geometry: InteractiveGeometry,
     canvas: HTMLCanvasElement,
-    config: Partial<InteractionConfig> = {},
+    config: Partial<ExtendedInteractionConfig> = {},
   ) {
     this.geometry = geometry
     this.canvas = canvas
-    this.config = { ...DEFAULT_INTERACTION_CONFIG, ...config }
+    this.config = { ...DEFAULT_EXTENDED_CONFIG, ...config }
 
     // Initialize drag state
     this.drag = {

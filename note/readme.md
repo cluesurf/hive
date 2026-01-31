@@ -34,21 +34,27 @@ visualization.
 
 ## Features
 
-| Topic                 | Document             |
-| --------------------- | -------------------- |
-| User interaction      | `interactivity.md`   |
-| Paths, labels, layers | `visual-features.md` |
-| SVG-style paths       | `visual-features.md` |
-| Path animation        | `visual-features.md` |
-| Curve rendering       | `curve-rendering.md` |
+| Topic                        | Document             |
+| ---------------------------- | -------------------- |
+| User interaction             | `interactivity.md`   |
+| Feature configuration        | `interactivity.md`   |
+| Drag/throw/zoom/rotate       | `interactivity.md`   |
+| Tile selection & navigation  | `interactivity.md`   |
+| Two-finger rotation          | `interactivity.md`   |
+| Paths, labels, layers        | `visual-features.md` |
+| SVG-style paths              | `visual-features.md` |
+| Path animation               | `visual-features.md` |
+| Curve rendering              | `curve-rendering.md` |
 
 ## Research & References
 
-| Topic                 | Document             |
-| --------------------- | -------------------- |
-| Source code analysis  | `source-analysis.md` |
-| HyperRogue deep dive  | `hyperrogue.md`      |
-| External dependencies | `dependencies.md`    |
+| Topic                      | Document                              |
+| -------------------------- | ------------------------------------- |
+| Source code analysis       | `source-analysis.md`                  |
+| HyperRogue deep dive       | `hyperrogue.md`                       |
+| External dependencies      | `dependencies.md`                     |
+| Coordinate systems overview| `hyperbolic-coordinate-systems.md`    |
+| Margenstern Fibonacci addr | `margenstern-fibonacci-addressing.md` |
 
 ## Key Decisions
 
@@ -125,7 +131,7 @@ Phase 5: Rendering
 
 Phase 6: Interactivity
 
-- Not started
+- Design complete (see `interactivity.md` and `animation.md`)
 
 Phase 7: Scene Management
 

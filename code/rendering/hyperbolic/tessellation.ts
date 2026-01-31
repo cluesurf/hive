@@ -26,6 +26,10 @@ import {
 export interface AddressedTileData {
   id: string
   vertices: Array<[number, number]>
+  /** Optional depth (if provided, used instead of computing from word) */
+  depth?: number
+  /** Optional Margenstern address string */
+  address?: string
 }
 
 /**
@@ -51,8 +55,8 @@ export function addressedTilesToNodes(
   const nodes: PolygonNode[] = []
 
   for (const tile of tiles) {
-    // Compute depth from tile ID (word length approximates distance)
-    const depth = computeWordDepth(tile.id)
+    // Use provided depth if available, otherwise compute from word
+    const depth = tile.depth ?? computeWordDepth(tile.id)
 
     const fillColor = depthFillColor(
       depth,
