@@ -1,11 +1,14 @@
 import type { MetaFunction, LoaderFunctionArgs } from '@remix-run/node'
 import { useLoaderData, Link } from '@remix-run/react'
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Hyperbolic2DTessellation } from '@cluesurf/hive/tessellation'
+import {
+  DynamicTessellationManager,
+  type Tile,
+} from '@cluesurf/hive/tessellation'
 import {
   Canvas2DRenderer,
   createScene,
-  tessellationToNodes,
+  dynamicTilesToNodes,
   setupParentReferences,
 } from '@cluesurf/hive/rendering'
 import {
@@ -13,6 +16,7 @@ import {
   Hyperbolic2DInteraction,
   GeometryView,
 } from '@cluesurf/hive/interaction'
+import { Hyperbolic2D } from '@cluesurf/hive/math'
 import {
   FocusManager,
   FocusRing,
@@ -22,10 +26,10 @@ import {
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
-    { title: `{${data?.p},${data?.q}} Hyperbolic Tiling` },
+    { title: `{${data?.p},${data?.q}} Dynamic Hyperbolic Tiling` },
     {
       name: 'description',
-      content: `Hyperbolic {${data?.p},${data?.q}} tiling visualization`,
+      content: `Dynamic hyperbolic {${data?.p},${data?.q}} tiling with infinite scrolling`,
     },
   ]
 }
@@ -44,45 +48,32 @@ export async function loader({ params }: LoaderFunctionArgs) {
   return { p, q, isHyperbolic, error: null }
 }
 
-export default function HyperbolicTiling() {
+export default function DynamicHyperbolicTiling() {
   const { p, q, isHyperbolic, error } = useLoaderData<typeof loader>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<Canvas2DRenderer | null>(null)
   const controllerRef = useRef<InteractionController | null>(null)
   const viewRef = useRef<GeometryView | null>(null)
-  const tessellationRef = useRef<ReturnType<
-    Hyperbolic2DTessellation['generate']
-  > | null>(null)
+  const tessellationRef = useRef<DynamicTessellationManager | null>(null)
+  const geometryRef = useRef<Hyperbolic2D | null>(null)
   const focusManagerRef = useRef<FocusManager | null>(null)
   const focusRingRef = useRef<FocusRing | null>(null)
   const focusNavRef = useRef<FocusNavigation | null>(null)
 
-  const [zoom, setZoom] = useState(0.69)
-  const [depth, setDepth] = useState(5)
+  const [zoom, setZoom] = useState(0.9)
+  const [visibleRadius, setVisibleRadius] = useState(3.0)
   const [tileCount, setTileCount] = useState(0)
+  const [totalTiles, setTotalTiles] = useState(0)
   const [focusedTileId, setFocusedTileId] = useState<string | null>(null)
-
-  // Generate scene from tessellation
-  const generateScene = useCallback(() => {
-    if (!tessellationRef.current) return null
-    const nodes = tessellationToNodes(tessellationRef.current, { hue: 220 })
-    const geometry = new Hyperbolic2DTessellation({
-      p,
-      q,
-      maxDepth: depth,
-    }).getGeometry()
-    const scene = createScene(geometry, nodes)
-    setupParentReferences(scene)
-    return scene
-  }, [p, q, depth])
 
   // Draw the current scene with current view transform
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     const renderer = rendererRef.current
     const tessellation = tessellationRef.current
+    const geometry = geometryRef.current
 
-    if (!canvas || !renderer || !tessellation) return
+    if (!canvas || !renderer || !tessellation || !geometry) return
 
     renderer.clear()
     renderer.drawDiskBoundary()
@@ -99,20 +90,34 @@ export default function HyperbolicTiling() {
       return
     }
 
-    const scene = generateScene()
-    if (!scene) return
+    // Update view center from current transform
+    const view = viewRef.current
+    if (view) {
+      const transform = view.getTransform()
+      tessellation.setViewTransform(transform)
+    }
 
-    // Update focus manager
+    // Get visible tiles dynamically
+    const visibleTiles = tessellation.getVisibleTiles()
+    setTileCount(visibleTiles.length)
+    setTotalTiles(tessellation.getTileCount())
+
+    // Convert tiles to scene nodes
+    const nodes = dynamicTilesToNodes(visibleTiles, { hue: 220 })
+    const scene = createScene(geometry, nodes)
+    setupParentReferences(scene)
+
+    // Update focus manager with new scene
     if (focusManagerRef.current) {
       focusManagerRef.current.setScene(scene)
     }
 
+    // Render the scene
     renderer.render(scene)
 
     // Render focus ring if there's a focused node
     const focusManager = focusManagerRef.current
     const focusRing = focusRingRef.current
-    const view = viewRef.current
     const focused = focusManager?.getFocused()
     if (focused && focusRing && view) {
       focusRing.update(performance.now())
@@ -127,37 +132,24 @@ export default function HyperbolicTiling() {
       )
     }
 
+    // Draw info
     const infoLines = [
-      `{${p},${q}} tiling`,
-      `${tessellation.tiles.size} tiles (depth ${depth})`,
+      `{${p},${q}} dynamic tiling`,
+      `Visible: ${visibleTiles.length} / Total: ${tessellation.getTileCount()}`,
     ]
     if (focusedTileId) {
       infoLines.push(`Focused: ${focusedTileId}`)
     }
     renderer.drawInfo(infoLines)
-  }, [p, q, depth, isHyperbolic, error, generateScene, focusedTileId])
 
-  // Generate tessellation when p, q, or depth changes
-  useEffect(() => {
-    if (!isHyperbolic || error) return
+    // Garbage collect old tiles
+    tessellation.collectGarbage()
+  }, [p, q, isHyperbolic, error, focusedTileId])
 
-    try {
-      const tessGenerator = new Hyperbolic2DTessellation({
-        p,
-        q,
-        maxDepth: depth,
-      })
-      tessellationRef.current = tessGenerator.generate()
-      setTileCount(tessellationRef.current.tiles.size)
-    } catch (e) {
-      console.error('Failed to generate tessellation:', e)
-    }
-  }, [p, q, depth, isHyperbolic, error])
-
-  // Initialize renderer, view, and interaction controller
+  // Initialize renderer, view, tessellation, and interaction controller
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || !isHyperbolic || error) return
+    if (!canvas) return
 
     // Create renderer
     if (!rendererRef.current) {
@@ -175,6 +167,17 @@ export default function HyperbolicTiling() {
       })
     }
 
+    // Create geometry
+    geometryRef.current = new Hyperbolic2D()
+
+    // Create dynamic tessellation manager
+    tessellationRef.current = new DynamicTessellationManager({
+      p,
+      q,
+      maxTiles: 3000,
+      visibleRadius,
+    })
+
     // Create interaction geometry and view
     const interactionGeom = new Hyperbolic2DInteraction()
     viewRef.current = new GeometryView(interactionGeom)
@@ -186,7 +189,7 @@ export default function HyperbolicTiling() {
       canvas,
       {
         sensitivity: 1.0,
-        invertDrag: true, // Drag to scroll (move view opposite to drag)
+        invertDrag: true,
         momentumEnabled: true,
         momentumDecay: 0.92,
       },
@@ -203,26 +206,31 @@ export default function HyperbolicTiling() {
     )
 
     // Create initial scene for focus manager
-    const initialScene = generateScene()
-    if (initialScene) {
-      focusManagerRef.current = new FocusManager(initialScene)
-      focusManagerRef.current.onFocusChange((prev, next) => {
-        setFocusedTileId(next?.id ?? null)
-      })
+    const initialTiles = tessellationRef.current.getVisibleTiles()
+    const initialNodes = dynamicTilesToNodes(initialTiles, { hue: 220 })
+    const initialScene = createScene(geometryRef.current, initialNodes)
+    setupParentReferences(initialScene)
 
-      // Set up keyboard navigation
-      focusNavRef.current = new FocusNavigation(
-        focusManagerRef.current,
-        canvas,
-      )
-    }
+    // Create focus manager
+    focusManagerRef.current = new FocusManager(initialScene)
+    focusManagerRef.current.onFocusChange((prev, next) => {
+      setFocusedTileId(next?.id ?? null)
+    })
+
+    // Set up keyboard navigation
+    focusNavRef.current = new FocusNavigation(
+      focusManagerRef.current,
+      canvas,
+    )
 
     // Handle click for focus
     const handleClick = (event: MouseEvent) => {
+      const tessellation = tessellationRef.current
       const focusManager = focusManagerRef.current
       const renderer = rendererRef.current
+      const geometry = geometryRef.current
 
-      if (!focusManager || !renderer) return
+      if (!tessellation || !focusManager || !renderer || !geometry) return
 
       const rect = canvas.getBoundingClientRect()
       const screenPoint = {
@@ -230,9 +238,11 @@ export default function HyperbolicTiling() {
         y: event.clientY - rect.top,
       }
 
-      const scene = generateScene()
-      if (!scene) return
-
+      // Rebuild scene for hit testing
+      const visibleTiles = tessellation.getVisibleTiles()
+      const nodes = dynamicTilesToNodes(visibleTiles, { hue: 220 })
+      const scene = createScene(geometry, nodes)
+      setupParentReferences(scene)
       focusManager.setScene(scene)
 
       const hit = hitTest(
@@ -262,7 +272,7 @@ export default function HyperbolicTiling() {
       focusNavRef.current?.dispose()
       canvas.removeEventListener('click', handleClick)
     }
-  }, [p, q, isHyperbolic, error, zoom, generateScene, draw])
+  }, [p, q, visibleRadius])
 
   // Update renderer config when zoom changes
   useEffect(() => {
@@ -277,11 +287,6 @@ export default function HyperbolicTiling() {
       draw()
     }
   }, [zoom, draw])
-
-  // Redraw when tessellation changes
-  useEffect(() => {
-    draw()
-  }, [tileCount, draw])
 
   // Handle resize
   useEffect(() => {
@@ -313,15 +318,12 @@ export default function HyperbolicTiling() {
 
     const animate = () => {
       const focused = focusManagerRef.current?.getFocused()
-
-      // Only run animation loop when there's a focused node
       if (focused) {
         draw()
         animationId = requestAnimationFrame(animate)
       }
     }
 
-    // Start animation when focus changes
     if (focusedTileId) {
       animate()
     }
@@ -352,8 +354,11 @@ export default function HyperbolicTiling() {
           <h1 className="text-xl font-semibold">
             {'{'}
             {p},{q}
-            {'}'} Hyperbolic Tiling
+            {'}'} Dynamic Hyperbolic Tiling
           </h1>
+          <span className="text-sm text-green-400 bg-green-900/30 px-2 py-1 rounded">
+            Infinite Scrolling
+          </span>
         </div>
         <div className="flex items-center gap-6">
           <button
@@ -363,16 +368,17 @@ export default function HyperbolicTiling() {
             Reset View
           </button>
           <label className="flex items-center gap-2">
-            <span className="text-gray-400 text-sm">Depth:</span>
+            <span className="text-gray-400 text-sm">Radius:</span>
             <input
               type="range"
-              min="1"
-              max="8"
-              value={depth}
-              onChange={e => setDepth(parseInt(e.target.value, 10))}
+              min="1.5"
+              max="5.0"
+              step="0.1"
+              value={visibleRadius}
+              onChange={e => setVisibleRadius(parseFloat(e.target.value))}
               className="w-24"
             />
-            <span className="text-sm w-8">{depth}</span>
+            <span className="text-sm w-12">{visibleRadius.toFixed(1)}</span>
           </label>
           <label className="flex items-center gap-2">
             <span className="text-gray-400 text-sm">Zoom:</span>
@@ -398,7 +404,8 @@ export default function HyperbolicTiling() {
         />
       </main>
       <footer className="p-2 text-center text-gray-500 text-xs">
-        Drag to explore | Click to focus | Arrow keys to navigate
+        Drag to explore infinite hyperbolic space | Tiles generated on-demand |
+        Click to focus | Arrow keys to navigate
       </footer>
     </div>
   )

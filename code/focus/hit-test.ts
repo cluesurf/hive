@@ -1,4 +1,9 @@
-import type { Scene, AnyNode, PolygonNode, PointNode } from '@/rendering/scene'
+import type {
+  Scene,
+  AnyNode,
+  PolygonNode,
+  PointNode,
+} from '@/rendering/scene'
 import type { GeometryView } from '@/interaction/view'
 import type { Point } from '@/form/point'
 import type { FocusableNode } from './types'
@@ -81,7 +86,13 @@ function nodeContainsPoint(
         view,
       )
     case 'point':
-      return pointContainsPoint(node as PointNode, diskX, diskY, scene, view)
+      return pointContainsPoint(
+        node as PointNode,
+        diskX,
+        diskY,
+        scene,
+        view,
+      )
     default:
       return false
   }

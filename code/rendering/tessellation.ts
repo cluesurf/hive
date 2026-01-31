@@ -1,4 +1,5 @@
 import type { Tessellation } from '@/tessellation/types'
+import type { Tile as DynamicTile } from '@/tessellation/dynamic'
 import type { PolygonNode } from './scene'
 import { createPolygon } from './scene'
 
@@ -111,6 +112,56 @@ export function tessellationToNodes(
       focusable: true,
       name: `Tile ${tile.id}`,
       center,
+    })
+
+    nodes.push(polygon)
+  }
+
+  return nodes
+}
+
+/**
+ * Convert dynamic tiles to polygon nodes.
+ * Used for rendering dynamically generated tessellations.
+ */
+export function dynamicTilesToNodes(
+  tiles: DynamicTile[],
+  options: TileStyleOptions = {},
+): PolygonNode[] {
+  const {
+    hue = DEFAULT_HUE,
+    baseSaturation = DEFAULT_BASE_SATURATION,
+    baseLightness = DEFAULT_BASE_LIGHTNESS,
+    saturationDecay = DEFAULT_SATURATION_DECAY,
+    lightnessDecay = DEFAULT_LIGHTNESS_DECAY,
+  } = options
+
+  const nodes: PolygonNode[] = []
+
+  for (const tile of tiles) {
+    const fillColor = depthFillColor(
+      tile.depth,
+      hue,
+      baseSaturation,
+      baseLightness,
+      saturationDecay,
+      lightnessDecay,
+    )
+    const strokeColor = depthStrokeColor(
+      tile.depth,
+      hue,
+      baseLightness,
+      lightnessDecay,
+    )
+
+    const polygon = createPolygon(tile.id, tile.vertices, {
+      fillColor,
+      strokeColor,
+      strokeWidth: 1,
+      depth: tile.depth,
+      focusable: true,
+      name: `Tile ${tile.id}`,
+      center: tile.center,
     })
 
     nodes.push(polygon)

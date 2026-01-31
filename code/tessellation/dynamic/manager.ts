@@ -15,11 +15,11 @@ export class DynamicTessellationManager {
   private viewCenter: Point = [0, 0, 1]
 
   // Precomputed geometry values
-  private edgeLength: number
-  private centralAngle: number
-  private vertexAngle: number
-  private rotationMatrix: Matrix
-  private inverseRotationMatrix: Matrix
+  private edgeLength!: number
+  private centralAngle!: number
+  private vertexAngle!: number
+  private rotationMatrix!: Matrix
+  private inverseRotationMatrix!: Matrix
 
   constructor(config: Partial<DynamicTessellationConfig> = {}) {
     this.config = { ...DEFAULT_DYNAMIC_CONFIG, ...config }

@@ -1,5 +1,9 @@
 import type { Scene, AnyNode } from '@/rendering/scene'
-import type { FocusableNode, FocusState, FocusChangeCallback } from './types'
+import type {
+  FocusableNode,
+  FocusState,
+  FocusChangeCallback,
+} from './types'
 import { isFocusableNode } from './types'
 
 /**
@@ -243,7 +247,8 @@ export class FocusManager {
    * Navigate forward in focus history.
    */
   focusForward(): boolean {
-    if (this.state.historyIndex >= this.state.history.length - 1) return false
+    if (this.state.historyIndex >= this.state.history.length - 1)
+      return false
 
     this.state.historyIndex++
     const next = this.state.history[this.state.historyIndex]

@@ -1,5 +1,10 @@
 import type { FocusableNode, FocusRingStyle } from './types'
-import type { Scene, PolygonNode, PointNode, PathNode } from '@/rendering/scene'
+import type {
+  Scene,
+  PolygonNode,
+  PointNode,
+  PathNode,
+} from '@/rendering/scene'
 import type { GeometryView } from '@/interaction/view'
 import type { Point } from '@/form/point'
 import { DEFAULT_FOCUS_RING_STYLE } from './types'
@@ -65,7 +70,8 @@ export class FocusRing {
       // Pulse between 0.6 and 1.0 opacity
       alpha = 0.6 + 0.4 * Math.sin(this.animationPhase)
       // Slight width variation
-      lineWidth = this.style.width * (0.9 + 0.1 * Math.sin(this.animationPhase))
+      lineWidth =
+        this.style.width * (0.9 + 0.1 * Math.sin(this.animationPhase))
     }
 
     ctx.strokeStyle = this.style.color
