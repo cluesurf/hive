@@ -237,14 +237,16 @@ export class DynamicTessellationManager {
     const visible: Tile[] = []
     const visited = new Set<string>()
 
-    // BFS from origin, expanding toward visible area
-    // We explore all tiles within a hyperbolic distance limit,
-    // but only return those that are actually visible on screen
-    const queue: Tile[] = [this.origin]
+    // Find a starting tile near the view center
+    // This is crucial when the view has moved far from the origin
+    const startTile = this.findTileNearPoint(this.viewCenter)
+
+    // BFS from the starting tile, expanding outward
+    const queue: Tile[] = [startTile]
 
     // Maximum hyperbolic distance to explore (larger than visible radius
     // to ensure we reach tiles that might be visible after transform)
-    const maxExploreDistance = this.config.visibleRadius + 3.0
+    const maxExploreDistance = this.config.visibleRadius + 2.0
 
     while (queue.length > 0 && visited.size < this.config.maxTiles * 2) {
       const tile = queue.shift()!
@@ -280,6 +282,42 @@ export class DynamicTessellationManager {
     }
 
     return visible
+  }
+
+  /**
+   * Find a tile near the given point by walking from origin.
+   * Uses greedy descent - always moving to the neighbor closest to target.
+   */
+  private findTileNearPoint(target: Point): Tile {
+    let current = this.origin
+    let currentDist = this.hyperbolicDistance(target, current.center)
+
+    // Walk toward target, generating tiles as needed
+    for (let iter = 0; iter < 200; iter++) {
+      let bestNeighbor: Tile | null = null
+      let bestDist = currentDist
+
+      // Check all neighbors
+      for (let i = 0; i < current.type; i++) {
+        const neighbor = this.getNeighbor(current, i)
+        const dist = this.hyperbolicDistance(target, neighbor.center)
+
+        if (dist < bestDist) {
+          bestDist = dist
+          bestNeighbor = neighbor
+        }
+      }
+
+      // If no neighbor is closer, we've found the closest tile
+      if (!bestNeighbor || bestDist >= currentDist - 0.001) {
+        break
+      }
+
+      current = bestNeighbor
+      currentDist = bestDist
+    }
+
+    return current
   }
 
   /**

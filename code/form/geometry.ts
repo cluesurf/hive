@@ -37,7 +37,12 @@ export abstract class Geometry {
    * Interpolate between two points along a geodesic.
    * t=0 returns a, t=1 returns b.
    */
-  abstract interpolate(a: Point, b: Point, t: number, out?: Point): Point
+  abstract interpolate(
+    a: Point,
+    b: Point,
+    t: number,
+    out?: Point,
+  ): Point
 
   /** Normalize a point to lie on the model surface */
   abstract normalize(p: Point, out?: Point): Point
