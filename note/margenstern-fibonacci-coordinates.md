@@ -44,8 +44,8 @@ Coordinate = (sector, path)
 sector in {0, 1, ..., p-1}
 ```
 
-For {5,4} pentagrid: 5 sectors (0-4)
-For {7,3} heptagrid: 7 sectors (0-6)
+For {5,4} pentagrid: 5 sectors (0-4) For {7,3} heptagrid: 7 sectors
+(0-6)
 
 ### Path (Tree Address)
 
@@ -74,7 +74,7 @@ Sequence: 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, ...
 
 For pentagrid {5,4} and ternary heptagrid {7,3}:
 
-- Level k has F_{2k+1} nodes
+- Level k has F\_{2k+1} nodes
 
 The number of tiles grows as the golden ratio phi^n where:
 
@@ -330,7 +330,10 @@ function shortestPathSameSector(a: Path, b: Path): number[] {
 ### Different Sectors
 
 ```typescript
-function shortestPathDifferentSectors(a: TileCoord, b: TileCoord): number[] {
+function shortestPathDifferentSectors(
+  a: TileCoord,
+  b: TileCoord,
+): number[] {
   const pathToCenter = reversePathToRoot(a.path)
   const sectorCross = crossSector(a.sector, b.sector)
   const pathFromCenter = b.path
@@ -362,7 +365,7 @@ For computational geometry with exact coordinates:
 
 ### Pentagrid {5,4}
 
-Edge equation: omega^4 - 2*omega^2 - 4 = 0
+Edge equation: omega^4 - 2\*omega^2 - 4 = 0
 
 ### Heptagrid {7,3}
 
@@ -397,7 +400,8 @@ Hyperbolic coordinates become:
 1. **No coordinate explosion**: Addresses are finite sequences of bits
 2. **O(1) neighbor lookup**: Pattern matching on bit sequences
 3. **Sparse storage**: Only store cells that have data
-4. **Efficient navigation**: Receiver/giver paradigm avoids recomputation
+4. **Efficient navigation**: Receiver/giver paradigm avoids
+   recomputation
 5. **Works for both {5,4} and {7,3}**: Same tree, different side counts
 
 ## References

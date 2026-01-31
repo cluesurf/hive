@@ -193,8 +193,8 @@ tile the entire hyperbolic plane?
 
 The tiling problem is undecidable for the hyperbolic plane.
 
-This was proven by reducing the halting problem for cellular automata
-to the tiling problem.
+This was proven by reducing the halting problem for cellular automata to
+the tiling problem.
 
 ### Mantilla Structure
 
@@ -230,8 +230,8 @@ While not physically realizable, this shows that:
 
 - Hyperbolic geometry provides a natural framework for studying
   hypercomputation
-- The infinite structure of hyperbolic space enables capabilities
-  beyond finite Turing machines
+- The infinite structure of hyperbolic space enables capabilities beyond
+  finite Turing machines
 
 ## Summary
 

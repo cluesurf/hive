@@ -546,14 +546,14 @@ export class Hyperbolic2DTessellation {
 
   /**
    * Walk from current center toward view center.
-   * Just a few steps - getVisibleTiles will update centerCell when it finds visible tiles.
+   * Creates cells lazily along the way via move().
+   * Walks until we reach a cell near the view center or hit max steps.
    */
   private updateCenterCell(): void {
-    // getVisibleTiles handles the main center tracking now
-    // This just does a quick step toward view center as a hint
     let current = this.centerCell
+    const maxSteps = 500 // Allow walking very far for navigation
 
-    for (let step = 0; step < 3; step++) {
+    for (let step = 0; step < maxSteps; step++) {
       const currentTransform = current.transform
       if (!currentTransform) break
 
@@ -561,19 +561,26 @@ export class Hyperbolic2DTessellation {
       const center = this.applySU11Transform(combined, [0, 0])
       const currentDist = center[0] * center[0] + center[1] * center[1]
 
-      if (currentDist < 0.1) break
+      // Stop if we're close enough to view center
+      if (currentDist < 0.05) break
 
       let bestNeighbor = current
       let bestDist = currentDist
 
+      // Check all neighbors (this creates them via move() if needed)
       for (let d = 0; d < this.config.p; d++) {
         const neighbor = this.move(current, d)
         const neighborTransform = neighbor.transform
         if (!neighborTransform) continue
 
-        const neighborCombined = this.composeSU11(this.viewTransform, neighborTransform)
+        const neighborCombined = this.composeSU11(
+          this.viewTransform,
+          neighborTransform,
+        )
         const neighborCenter = this.applySU11Transform(neighborCombined, [0, 0])
-        const neighborDist = neighborCenter[0] * neighborCenter[0] + neighborCenter[1] * neighborCenter[1]
+        const neighborDist =
+          neighborCenter[0] * neighborCenter[0] +
+          neighborCenter[1] * neighborCenter[1]
 
         if (neighborDist < bestDist) {
           bestDist = neighborDist
@@ -581,6 +588,7 @@ export class Hyperbolic2DTessellation {
         }
       }
 
+      // No progress - we're stuck at a local minimum
       if (bestNeighbor === current) break
       current = bestNeighbor
     }
@@ -602,7 +610,8 @@ export class Hyperbolic2DTessellation {
     let queueIndex = 0
 
     // Phase 1: Explore outward until we find at least one visible tile
-    const maxSearchForVisible = 300
+    // Use large limit to handle navigation to distant tiles
+    const maxSearchForVisible = 1000
     while (queueIndex < queue.length && visibleCells.length === 0 && queueIndex < maxSearchForVisible) {
       const cell = queue[queueIndex++]!
 
@@ -851,6 +860,7 @@ export class Hyperbolic2DTessellation {
   /**
    * Navigate to a cell by ID (from a click).
    * Returns the transform needed to center the view on that cell.
+   * Also sets the cell as the new center.
    */
   navigateToCell(cellId: string): Matrix | null {
     const targetId = parseInt(cellId, 10)
@@ -869,6 +879,112 @@ export class Hyperbolic2DTessellation {
     // To center on this cell, we need the inverse transform
     // In SU(1,1), inverse of [a, b] is [conj(a), -b] / det
     return this.invertSU11(cellTransform)
+  }
+
+  /**
+   * Get the transform to center on a cell WITHOUT changing centerCell.
+   * Use this for animation preview/interpolation.
+   */
+  getCellCenterTransform(cellId: string): Matrix | null {
+    const targetId = parseInt(cellId, 10)
+    const target = this.findCellById(targetId)
+    if (!target) return null
+
+    const cellTransform = target.transform
+    if (!cellTransform) return null
+
+    return this.invertSU11(cellTransform)
+  }
+
+  /**
+   * Set the center cell without changing the view transform.
+   */
+  setCenterCell(cellId: string): boolean {
+    const targetId = parseInt(cellId, 10)
+    const target = this.findCellById(targetId)
+    if (!target) return false
+    this.centerCell = target
+    return true
+  }
+
+  /**
+   * Walk center cell toward view center, creating cells as needed.
+   * Call this after setting a new view transform to ensure cells exist.
+   */
+  walkToViewCenter(): void {
+    this.updateCenterCell()
+  }
+
+  /**
+   * Walk from current center toward a target cell, creating cells along the way.
+   * This ensures the graph path exists even if we're using computed viewTransforms.
+   */
+  walkTowardCell(cellId: string): void {
+    const targetId = parseInt(cellId, 10)
+
+    // First try to find it (might already exist)
+    let target = this.findCellById(targetId)
+    if (target) {
+      // Path exists, just update center
+      this.centerCell = target
+      return
+    }
+
+    // Walk toward where we think the target is by using its expected position
+    // This creates cells along the way
+    for (let step = 0; step < 500; step++) {
+      const currentTransform = this.centerCell.transform
+      if (!currentTransform) break
+
+      // Check if we found the target
+      if (this.centerCell.id === targetId) break
+
+      // Try to find target from current position
+      target = this.findCellById(targetId)
+      if (target) {
+        this.centerCell = target
+        break
+      }
+
+      // Expand outward from current cell to create more cells
+      for (let d = 0; d < this.config.p; d++) {
+        this.move(this.centerCell, d)
+      }
+
+      // Move to the neighbor closest to view center (which should be toward target)
+      const combined = this.composeSU11(this.viewTransform, currentTransform)
+      const center = this.applySU11Transform(combined, [0, 0])
+      const currentDist = center[0] * center[0] + center[1] * center[1]
+
+      if (currentDist < 0.05) break
+
+      let bestNeighbor = this.centerCell
+      let bestDist = currentDist
+
+      for (let d = 0; d < this.config.p; d++) {
+        const neighbor = this.centerCell.neighbors[d]
+        if (!neighbor) continue
+        const neighborTransform = neighbor.transform
+        if (!neighborTransform) continue
+
+        const neighborCombined = this.composeSU11(
+          this.viewTransform,
+          neighborTransform,
+        )
+        const neighborCenter = this.applySU11Transform(neighborCombined, [0, 0])
+        const neighborDist =
+          neighborCenter[0] * neighborCenter[0] +
+          neighborCenter[1] * neighborCenter[1]
+
+        if (neighborDist < bestDist) {
+          bestDist = neighborDist
+          bestNeighbor = neighbor
+        }
+      }
+
+      if (bestNeighbor === this.centerCell) break
+      this.centerCell = bestNeighbor
+    }
   }
 
   /**
@@ -939,10 +1055,14 @@ export class Hyperbolic2DTessellation {
    * Interpolate between two SU(1,1) transforms.
    */
   private interpolateSU11(from: Matrix, to: Matrix, t: number): Matrix {
-    const a1Re = from[0] ?? 1, a1Im = from[1] ?? 0
-    const b1Re = from[2] ?? 0, b1Im = from[3] ?? 0
-    const a2Re = to[0] ?? 1, a2Im = to[1] ?? 0
-    const b2Re = to[2] ?? 0, b2Im = to[3] ?? 0
+    const a1Re = from[0] ?? 1,
+      a1Im = from[1] ?? 0
+    const b1Re = from[2] ?? 0,
+      b1Im = from[3] ?? 0
+    const a2Re = to[0] ?? 1,
+      a2Im = to[1] ?? 0
+    const b2Re = to[2] ?? 0,
+      b2Im = to[3] ?? 0
 
     // Linear interpolation (not geodesic, but good enough for small steps)
     const aRe = a1Re + (a2Re - a1Re) * t

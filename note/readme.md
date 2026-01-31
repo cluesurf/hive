@@ -34,27 +34,27 @@ visualization.
 
 ## Features
 
-| Topic                        | Document             |
-| ---------------------------- | -------------------- |
-| User interaction             | `interactivity.md`   |
-| Feature configuration        | `interactivity.md`   |
-| Drag/throw/zoom/rotate       | `interactivity.md`   |
-| Tile selection & navigation  | `interactivity.md`   |
-| Two-finger rotation          | `interactivity.md`   |
-| Paths, labels, layers        | `visual-features.md` |
-| SVG-style paths              | `visual-features.md` |
-| Path animation               | `visual-features.md` |
-| Curve rendering              | `curve-rendering.md` |
+| Topic                       | Document             |
+| --------------------------- | -------------------- |
+| User interaction            | `interactivity.md`   |
+| Feature configuration       | `interactivity.md`   |
+| Drag/throw/zoom/rotate      | `interactivity.md`   |
+| Tile selection & navigation | `interactivity.md`   |
+| Two-finger rotation         | `interactivity.md`   |
+| Paths, labels, layers       | `visual-features.md` |
+| SVG-style paths             | `visual-features.md` |
+| Path animation              | `visual-features.md` |
+| Curve rendering             | `curve-rendering.md` |
 
 ## Research & References
 
-| Topic                      | Document                              |
-| -------------------------- | ------------------------------------- |
-| Source code analysis       | `source-analysis.md`                  |
-| HyperRogue deep dive       | `hyperrogue.md`                       |
-| External dependencies      | `dependencies.md`                     |
-| Coordinate systems overview| `hyperbolic-coordinate-systems.md`    |
-| Margenstern Fibonacci addr | `margenstern-fibonacci-addressing.md` |
+| Topic                       | Document                              |
+| --------------------------- | ------------------------------------- |
+| Source code analysis        | `source-analysis.md`                  |
+| HyperRogue deep dive        | `hyperrogue.md`                       |
+| External dependencies       | `dependencies.md`                     |
+| Coordinate systems overview | `hyperbolic-coordinate-systems.md`    |
+| Margenstern Fibonacci addr  | `margenstern-fibonacci-addressing.md` |
 
 ## Key Decisions
 
@@ -106,42 +106,6 @@ camera/   → form/, math/, model/
 interact/ → form/, tiling/, camera/
 render/   → form/, model/, camera/
 ```
-
-## Implementation Status
-
-Phase 1: Core Mathematics
-
-- Not started
-
-Phase 2: Geometric Objects
-
-- Not started
-
-Phase 3: Tessellation Generation
-
-- Not started
-
-Phase 4: 3D Extension
-
-- Not started
-
-Phase 5: Rendering
-
-- Not started
-
-Phase 6: Interactivity
-
-- Design complete (see `interactivity.md` and `animation.md`)
-
-Phase 7: Scene Management
-
-- Not started
-
-Phase 8: Advanced Features
-
-- Not started
-
-See `plan.md` for full details.
 
 ## For AI Assistants
 

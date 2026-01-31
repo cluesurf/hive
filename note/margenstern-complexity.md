@@ -103,9 +103,9 @@ This is because the exponential growth of hyperbolic space provides
 ## Ph = PSPACE Theorem
 
 **Theorem 5 (Iwamoto, Margenstern, Morita, Worsch)**: For any
-non-deterministic Turing machine N computing on w in space P(|w|),
-there is a hyperbolic cellular automaton H which computes whether N
-has a successful computation on w in time O(P(|w|)^2).
+non-deterministic Turing machine N computing on w in space P(|w|), there
+is a hyperbolic cellular automaton H which computes whether N has a
+successful computation on w in time O(P(|w|)^2).
 
 **Corollary 2**: Ph = PSPACE
 
@@ -144,9 +144,10 @@ This is the hyperbolic analog of Savitch's theorem for CAs.
 
 ## Separation Results
 
-**Theorem 9**: For functions t1(n) and t2(n) where t2(n)/t1(n)^3 -> infinity,
-there exists a language accepted in time t2(n) by deterministic CA that
-cannot be accepted in time t1(n) by any non-deterministic CA.
+**Theorem 9**: For functions t1(n) and t2(n) where t2(n)/t1(n)^3 ->
+infinity, there exists a language accepted in time t2(n) by
+deterministic CA that cannot be accepted in time t1(n) by any
+non-deterministic CA.
 
 ### Corollaries
 
@@ -170,8 +171,8 @@ Uses padding technique and Lemma 3 about complexity class preservation.
 
 **Theorem 11**: Ph strictly contained in EXPh
 
-Proof uses diagonal argument: construct language L such that L cannot
-be in any Ph class but can be computed in exponential time.
+Proof uses diagonal argument: construct language L such that L cannot be
+in any Ph class but can be computed in exponential time.
 
 **Corollary 6**: NPh strictly contained in EXPh and PSPACEh strictly
 contained in EXPh
@@ -183,8 +184,8 @@ contained in EXPh
 **Theorem 12**: A non-deterministic CA bounded by time t(n) can be
 simulated by:
 
-- 4*log_beta(t(n))-level bounded deterministic CA
-- 2*log_beta(t(n))-level bounded non-deterministic CA
+- 4\*log_beta(t(n))-level bounded deterministic CA
+- 2\*log_beta(t(n))-level bounded non-deterministic CA
 
 Where beta = (3 + sqrt(5))/2.
 
@@ -206,12 +207,12 @@ between polynomial and exponential classes.
 
 ## Key Theorems Summary
 
-| Theorem               | Statement                                  |
-| --------------------- | ------------------------------------------ |
-| Ph = NPh = PSPACE     | Complexity classes collapse in hyperbolic  |
-| SAT in O(n)           | 3-SAT solvable in linear time (unary)      |
-| Tiling undecidable    | Domino problem is undecidable              |
-| Beyond Turing         | Infinigrid can decide Σ^0_n formulas       |
+| Theorem            | Statement                                 |
+| ------------------ | ----------------------------------------- |
+| Ph = NPh = PSPACE  | Complexity classes collapse in hyperbolic |
+| SAT in O(n)        | 3-SAT solvable in linear time (unary)     |
+| Tiling undecidable | Domino problem is undecidable             |
+| Beyond Turing      | Infinigrid can decide Σ^0_n formulas      |
 
 ## Technical Details
 
@@ -219,7 +220,7 @@ between polynomial and exponential classes.
 
 Uses Fibonacci tree structure:
 
-- Level k has F_{2k+1} nodes
+- Level k has F\_{2k+1} nodes
 - Levels can be extended dynamically
 - Each level corresponds to a variable
 
