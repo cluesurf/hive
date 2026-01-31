@@ -35,12 +35,14 @@ Scene (root)
 Two related but distinct concepts:
 
 **Focus** (single):
+
 - Exactly one node can be focused at a time (or none)
 - Focus determines keyboard navigation context
 - Visual indicator: outline, glow, or highlight
 - Like DOM `document.activeElement`
 
 **Selection** (multiple):
+
 - Zero or more nodes can be selected simultaneously
 - Selection is a set of nodes for batch operations
 - Visual indicator: different fill/stroke, selection handles
@@ -58,26 +60,26 @@ Each node in the scene graph needs:
 ```typescript
 interface SceneNode {
   // Identity
-  id: string                    // Unique identifier
-  name?: string                 // Human-readable name (for search/voice)
-  type: NodeType                // 'group' | 'polygon' | 'path' | 'point' | 'text'
+  id: string // Unique identifier
+  name?: string // Human-readable name (for search/voice)
+  type: NodeType // 'group' | 'polygon' | 'path' | 'point' | 'text'
 
   // Hierarchy
-  parent: SceneNode | null      // Parent reference
-  children: SceneNode[]         // Child nodes (empty for leaf nodes)
+  parent: SceneNode | null // Parent reference
+  children: SceneNode[] // Child nodes (empty for leaf nodes)
 
   // Focus/Selection
-  focusable: boolean            // Can this node receive focus?
-  tabIndex?: number             // Optional explicit focus order
+  focusable: boolean // Can this node receive focus?
+  tabIndex?: number // Optional explicit focus order
 
   // Geometry (for hit testing and camera alignment)
-  bounds?: BoundingRegion       // Bounding box/circle in geometry coords
-  center?: Point                // Center point for camera targeting
+  bounds?: BoundingRegion // Bounding box/circle in geometry coords
+  center?: Point // Center point for camera targeting
 
   // Callbacks
-  onFocus?: () => void          // Called when node receives focus
-  onBlur?: () => void           // Called when node loses focus
-  onSelect?: () => void         // Called when node is selected
+  onFocus?: () => void // Called when node receives focus
+  onBlur?: () => void // Called when node loses focus
+  onSelect?: () => void // Called when node is selected
 }
 ```
 
@@ -89,7 +91,7 @@ Central state management for focus:
 interface FocusManager {
   // State
   focusedNode: SceneNode | null
-  focusHistory: SceneNode[]     // For back/forward navigation
+  focusHistory: SceneNode[] // For back/forward navigation
 
   // Core operations
   focus(node: SceneNode): void
@@ -105,7 +107,7 @@ interface FocusManager {
   // Search/jump
   focusById(id: string): void
   focusByName(name: string): void
-  focusNearest(point: Point): void   // For mouse clicks
+  focusNearest(point: Point): void // For mouse clicks
 
   // History
   focusBack(): void
@@ -123,13 +125,17 @@ Renders the focus indicator:
 ```typescript
 interface FocusRing {
   // Configuration
-  style: FocusRingStyle         // outline, glow, highlight, etc.
+  style: FocusRingStyle // outline, glow, highlight, etc.
   color: string
   thickness: number
-  animated: boolean             // Pulse/breathe animation
+  animated: boolean // Pulse/breathe animation
 
   // Rendering
-  render(ctx: CanvasRenderingContext2D, node: SceneNode, view: GeometryView): void
+  render(
+    ctx: CanvasRenderingContext2D,
+    node: SceneNode,
+    view: GeometryView,
+  ): void
 }
 ```
 
@@ -139,19 +145,19 @@ interface FocusRing {
 
 Following DOM-like conventions:
 
-| Key          | Action                                      |
-|--------------|---------------------------------------------|
-| Tab          | Focus next focusable node (depth-first)     |
-| Shift+Tab    | Focus previous focusable node               |
-| ↓ (Down)     | Focus first child (or next sibling if leaf) |
-| ↑ (Up)       | Focus parent                                |
-| → (Right)    | Focus next sibling                          |
-| ← (Left)     | Focus previous sibling                      |
-| Home         | Focus first sibling                         |
-| End          | Focus last sibling                          |
-| Enter/Space  | Activate/select focused node                |
-| Escape       | Blur (unfocus) / exit current context       |
-| Backspace    | Focus back (history)                        |
+| Key         | Action                                      |
+| ----------- | ------------------------------------------- |
+| Tab         | Focus next focusable node (depth-first)     |
+| Shift+Tab   | Focus previous focusable node               |
+| ↓ (Down)    | Focus first child (or next sibling if leaf) |
+| ↑ (Up)      | Focus parent                                |
+| → (Right)   | Focus next sibling                          |
+| ← (Left)    | Focus previous sibling                      |
+| Home        | Focus first sibling                         |
+| End         | Focus last sibling                          |
+| Enter/Space | Activate/select focused node                |
+| Escape      | Blur (unfocus) / exit current context       |
+| Backspace   | Focus back (history)                        |
 
 ### Mouse Navigation
 
@@ -201,6 +207,7 @@ interface HitTestable {
 ```
 
 For hyperbolic polygons, this requires:
+
 1. Transform click from screen to Poincare disk coordinates
 2. Transform from Poincare disk to hyperboloid (if needed)
 3. Apply inverse view transform
@@ -209,6 +216,7 @@ For hyperbolic polygons, this requires:
 ### Approach 2: Render-based (simpler)
 
 Use a separate "pick buffer" canvas:
+
 1. Render each node with a unique color (ID encoded as RGB)
 2. On click, read pixel color from pick buffer
 3. Decode color to node ID
@@ -238,31 +246,42 @@ interface CameraController {
   animateToFit(node: SceneNode, duration: number): void
 
   // Alignment options
-  zoomToFit(node: SceneNode, options: {
-    padding?: number        // Space around node (in disk units)
-    maxZoom?: number        // Don't zoom in too far
-    animate?: boolean
-    duration?: number
-  }): void
+  zoomToFit(
+    node: SceneNode,
+    options: {
+      padding?: number // Space around node (in disk units)
+      maxZoom?: number // Don't zoom in too far
+      animate?: boolean
+      duration?: number
+    },
+  ): void
 }
 ```
 
 ### Implementation for Hyperbolic
 
 To center view on a node in hyperbolic space:
+
 1. Get node's center point in hyperboloid coordinates
 2. Compute Lorentz boost that moves that point to origin
 3. Apply boost to view transform
 4. Optionally adjust "zoom" (Poincare disk radius scaling)
 
 ```typescript
-function zoomToFit(node: SceneNode, view: GeometryView, geometry: InteractiveGeometry): void {
+function zoomToFit(
+  node: SceneNode,
+  view: GeometryView,
+  geometry: InteractiveGeometry,
+): void {
   const center = node.center
   if (!center) return
 
   // Compute translation that moves center to origin
   const diskCenter = geometry.toDisplayCoordinates(center)
-  const translation = geometry.buildTranslation(diskCenter, { u: 0, v: 0 })
+  const translation = geometry.buildTranslation(diskCenter, {
+    u: 0,
+    v: 0,
+  })
 
   // Apply to view
   view.setTransform(translation)
@@ -276,18 +295,21 @@ function zoomToFit(node: SceneNode, view: GeometryView, geometry: InteractiveGeo
 Options for where to store focus state:
 
 **Option A: In FocusManager singleton**
+
 ```typescript
 const focusManager = new FocusManager(scene)
 focusManager.focus(node)
 ```
 
 **Option B: In Scene object**
+
 ```typescript
 scene.focus.current = node
 scene.focus.focusById('tile-42')
 ```
 
 **Option C: External state (React/signals)**
+
 ```typescript
 const [focusedId, setFocusedId] = useState<string | null>(null)
 // FocusManager reads/writes through callbacks
@@ -301,7 +323,10 @@ for React integration.
 ```typescript
 interface FocusEvents {
   // Global events
-  onFocusChange: (prev: SceneNode | null, next: SceneNode | null) => void
+  onFocusChange: (
+    prev: SceneNode | null,
+    next: SceneNode | null,
+  ) => void
 
   // Per-node events
   onFocus: (node: SceneNode) => void
@@ -322,6 +347,7 @@ interface FocusEvents {
 ### Rendering Order
 
 Focus indicator should render:
+
 1. After all scene content (on top)
 2. Respecting view transform (moves with content)
 3. With consistent screen-space thickness (doesn't scale with zoom)
@@ -333,14 +359,16 @@ function renderFocusRing(
   ctx: CanvasRenderingContext2D,
   node: SceneNode,
   view: GeometryView,
-  renderer: Canvas2DRenderer
+  renderer: Canvas2DRenderer,
 ): void {
   if (node.type === 'polygon') {
     // Get transformed vertices
     const vertices = view.transformPoints(node.vertices)
 
     // Project to screen
-    const screenPoints = vertices.map(v => renderer.toCanvas(v, 'hyperbolic'))
+    const screenPoints = vertices.map(v =>
+      renderer.toCanvas(v, 'hyperbolic'),
+    )
 
     // Draw focus ring
     ctx.strokeStyle = '#00ff00'
@@ -425,17 +453,20 @@ code/camera/
 ## Implementation Order
 
 1. **Phase 1: Basic Focus**
+
    - Add `id`, `parent`, `children` to scene nodes
    - Create FocusManager with focus/blur
    - Render simple focus ring
    - Mouse click to focus
 
 2. **Phase 2: Keyboard Navigation**
+
    - Arrow key navigation (up/down/left/right)
    - Tab/Shift+Tab cycling
    - Escape to blur
 
 3. **Phase 3: Camera Integration**
+
    - ZoomToFit on double-click or Enter
    - Animated transitions
    - Keyboard shortcut (e.g., 'F' for fit)
@@ -448,18 +479,21 @@ code/camera/
 
 ## Open Questions
 
-1. **Should groups be focusable?** Probably yes, to enable tree navigation.
+1. **Should groups be focusable?** Probably yes, to enable tree
+   navigation.
 
 2. **What about nodes outside view?** Should focusing a far-away node
    auto-scroll to show it?
 
-3. **Focus persistence across regeneration?** If tessellation regenerates,
-   try to re-focus equivalent node?
+3. **Focus persistence across regeneration?** If tessellation
+   regenerates, try to re-focus equivalent node?
 
 4. **Touch devices?** Tap = click, long-press = right-click?
 
 ## References
 
-- DOM Focus Management: https://developer.mozilla.org/en-US/docs/Web/API/Document/activeElement
-- WAI-ARIA Tree Pattern: https://www.w3.org/WAI/ARIA/apg/patterns/treeview/
+- DOM Focus Management:
+  https://developer.mozilla.org/en-US/docs/Web/API/Document/activeElement
+- WAI-ARIA Tree Pattern:
+  https://www.w3.org/WAI/ARIA/apg/patterns/treeview/
 - Three.js Raycaster: https://threejs.org/docs/#api/en/core/Raycaster

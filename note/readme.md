@@ -23,6 +23,15 @@ visualization.
 | Fractal system           | `fractals.md`              |
 | Hyperbolic honeycombs    | `hyperbolic-honeycombs.md` |
 
+## Fractal Animation
+
+| Topic                         | Document                               |
+| ----------------------------- | -------------------------------------- |
+| Animation techniques          | `fractal-tunnel-animation-techniques.md` |
+| System spec & data model      | `fractal-cathedral-spec.md`            |
+| Bronze cathedral recipe       | `bronze-cathedral-recipe.md`           |
+| AdS/CFT connection            | `hyperbolic-ads-cft-connection.md`     |
+
 ## Architecture
 
 | Topic                    | Document              |

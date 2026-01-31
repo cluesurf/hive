@@ -954,22 +954,48 @@ export class Hyperbolic2DTessellation {
   }
 
   /**
-   * Expand the entire visible boundary outward by one layer.
-   * This ensures all visible tiles have their neighbors created,
-   * so clicking any edge tile will work.
+   * Expand tiles outward from center until the visible area is fully covered.
+   * This ensures there are never any blank spaces in the view.
    */
   expandVisibleBoundary(): void {
-    // Get all currently visible tiles
-    const visibleTiles = this.getVisibleTiles()
+    this.ensureVisibleAreaFilled()
+  }
 
-    // For each visible tile, ensure all its neighbors exist
-    for (const tile of visibleTiles) {
-      const cell = this.findCellById(parseInt(tile.id, 10))
-      if (!cell) continue
+  /**
+   * Ensure the entire visible area has tiles by expanding from centerCell.
+   * Keeps expanding until all tiles at the boundary are outside the visible disk.
+   */
+  private ensureVisibleAreaFilled(): void {
+    const visited = new Set<Cell>()
+    const queue: Cell[] = [this.centerCell]
+    let expansionCount = 0
+    const maxExpansion = 2000 // Safety limit
 
-      // Create all neighbors
-      for (let dir = 0; dir < this.config.p; dir++) {
-        this.move(cell, dir)
+    while (queue.length > 0 && expansionCount < maxExpansion) {
+      const cell = queue.shift()!
+      if (visited.has(cell)) continue
+      visited.add(cell)
+      expansionCount++
+
+      // Check if this cell is potentially visible (or near visible area)
+      const transform = cell.transform
+      if (!transform) continue
+
+      const combined = this.composeSU11(this.viewTransform, transform)
+      const center = this.applySU11Transform(combined, [0, 0])
+      const distSq = center[0] * center[0] + center[1] * center[1]
+
+      // Expand if cell center is within expanded visible radius (1.2 to ensure coverage)
+      // This creates a buffer zone beyond the visible edge
+      if (distSq < 1.44) {
+        // 1.2^2 = 1.44
+        // Create all neighbors
+        for (let dir = 0; dir < this.config.p; dir++) {
+          const neighbor = this.move(cell, dir)
+          if (!visited.has(neighbor)) {
+            queue.push(neighbor)
+          }
+        }
       }
     }
   }

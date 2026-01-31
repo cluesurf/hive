@@ -244,6 +244,9 @@ export default function HyperbolicTiling() {
     }
     renderer.drawInfo(infoLines)
 
+    // Ensure visible area is fully filled with tiles (no blank spaces)
+    tessellation.expandVisibleBoundary()
+
     // Garbage collect distant tiles
     tessellation.collectGarbage()
   }, [p, q, isHyperbolic, error, selectedTileId])
@@ -257,35 +260,20 @@ export default function HyperbolicTiling() {
       const view = viewRef.current
       if (!tessellation || !view) return
 
-      // BEFORE animation: expand the entire visible boundary
-      // This ensures ALL edge tiles have their outer neighbors created
-      tessellation.expandVisibleBoundary()
-
-      // Get the target transform WITHOUT changing centerCell
-      const endTransform = tessellation.getCellCenterTransform(cellId)
-      if (!endTransform) return
-
-      // Store start and end transforms
+      // Store start transform for interpolation
       const startTransform = tessellation.getViewTransform()
 
-      // Extract center points from transforms for geodesic interpolation
-      // For SU(1,1) [a,b], the point mapped to origin is p where a*p + b = 0, so p = -b/a
-      const extractCenter = (t: Matrix): [number, number] => {
-        const aRe = t[0] ?? 1,
-          aIm = t[1] ?? 0
-        const bRe = t[2] ?? 0,
-          bIm = t[3] ?? 0
-        const aMagSq = aRe * aRe + aIm * aIm
-        if (aMagSq < 0.0001) return [0, 0]
-        // -b/a = -(bRe + bIm*i) / (aRe + aIm*i)
-        // = -(bRe + bIm*i)(aRe - aIm*i) / (aRe² + aIm²)
-        const pRe = -(bRe * aRe + bIm * aIm) / aMagSq
-        const pIm = -(bIm * aRe - bRe * aIm) / aMagSq
-        return [pRe, pIm]
-      }
+      // Navigate immediately to set centerCell and get target transform
+      // This ensures the graph is correct before animation starts
+      const actualTransform = tessellation.navigateToCell(cellId)
+      if (!actualTransform) return
 
-      const startCenter = extractCenter(startTransform)
-      const endCenter = extractCenter(endTransform)
+      // Set the view transform so expansion knows where we're looking
+      tessellation.setViewTransform(actualTransform)
+
+      // Expand ALL tiles in visible area BEFORE animation
+      // This ensures no blank spaces
+      tessellation.expandVisibleBoundary()
 
       animationRef.current = {
         active: true,
@@ -294,121 +282,57 @@ export default function HyperbolicTiling() {
         targetCellId: cellId,
         easing: config.focusAnimation.easing,
         startTransform: [...startTransform],
-        endTransform: [...endTransform],
+        endTransform: [...actualTransform],
       }
 
       const animate = () => {
         const anim = animationRef.current
-        if (!anim.active) return
+        if (!anim.active || !anim.startTransform || !anim.endTransform) return
 
         const elapsed = performance.now() - anim.startTime
         const t = Math.min(1, elapsed / anim.duration)
         const eased = easingFunctions[anim.easing](t)
 
-        // Geodesic interpolation in Poincaré disk
-        // Move startCenter to origin, interpolate along diameter, move back
-        const [p1Re, p1Im] = startCenter
-        const [p2Re, p2Im] = endCenter
-
-        // Transform p2 to frame where p1 is at origin: T_{-p1}(p2)
-        const diffRe = p2Re - p1Re,
-          diffIm = p2Im - p1Im
-        const conjP1P2Re = p1Re * p2Re + p1Im * p2Im
-        const conjP1P2Im = p1Re * p2Im - p1Im * p2Re
-        const denomRe = 1 - conjP1P2Re,
-          denomIm = -conjP1P2Im
-        const denomMagSq = denomRe * denomRe + denomIm * denomIm
-
-        let interpRe: number, interpIm: number
-        if (denomMagSq < 0.0001) {
-          // Points coincident or antipodal - use linear
-          interpRe = p1Re + (p2Re - p1Re) * eased
-          interpIm = p1Im + (p2Im - p1Im) * eased
-        } else {
-          // p2 in p1's frame
-          const p2fRe = (diffRe * denomRe + diffIm * denomIm) / denomMagSq
-          const p2fIm = (diffIm * denomRe - diffRe * denomIm) / denomMagSq
-
-          // Interpolate along diameter through origin
-          const ifRe = p2fRe * eased,
-            ifIm = p2fIm * eased
-
-          // Transform back: T_{p1}(interp)
-          const sumRe = ifRe + p1Re,
-            sumIm = ifIm + p1Im
-          const cpiRe = p1Re * ifRe + p1Im * ifIm
-          const cpiIm = p1Re * ifIm - p1Im * ifRe
-          const bdRe = 1 + cpiRe,
-            bdIm = cpiIm
-          const bdMagSq = bdRe * bdRe + bdIm * bdIm
-          if (bdMagSq < 0.0001) {
-            interpRe = p1Re
-            interpIm = p1Im
-          } else {
-            interpRe = (sumRe * bdRe + sumIm * bdIm) / bdMagSq
-            interpIm = (sumIm * bdRe - sumRe * bdIm) / bdMagSq
-          }
+        // Interpolate between ACTUAL transforms (not pure translations)
+        // This keeps the graph system consistent
+        const interpolated: number[] = []
+        for (let i = 0; i < 9; i++) {
+          const s = anim.startTransform[i] ?? 0
+          const e = anim.endTransform[i] ?? 0
+          interpolated.push(s + (e - s) * eased)
         }
 
-        // Build pure translation that centers on interpolated point
-        // T_{-p}(z) = (z - p) / (1 - conj(p)*z) centers view on p
-        const pMagSq = interpRe * interpRe + interpIm * interpIm
-        let transform: Matrix
-        if (pMagSq < 0.0001) {
-          transform = [1, 0, 0, 0, 0, 0, 0, 0, 1]
-        } else if (pMagSq >= 1) {
-          // Clamp to disk boundary
-          const scale = 0.99 / Math.sqrt(pMagSq)
-          const clampedRe = interpRe * scale
-          const clampedIm = interpIm * scale
-          const clampedMagSq = clampedRe * clampedRe + clampedIm * clampedIm
-          const factor = 1 / Math.sqrt(1 - clampedMagSq)
-          transform = [
-            factor,
-            0,
-            -clampedRe * factor,
-            -clampedIm * factor,
-            0,
-            0,
-            0,
-            0,
-            1,
-          ]
-        } else {
-          const factor = 1 / Math.sqrt(1 - pMagSq)
-          // For T_{-p}: a = factor, b = -p * factor
-          transform = [
-            factor,
-            0,
-            -interpRe * factor,
-            -interpIm * factor,
-            0,
-            0,
-            0,
-            0,
-            1,
-          ]
+        // Renormalize SU(1,1) matrix
+        const aRe = interpolated[0]!
+        const aIm = interpolated[1]!
+        const bRe = interpolated[2]!
+        const bIm = interpolated[3]!
+        const aMagSq = aRe * aRe + aIm * aIm
+        const bMagSq = bRe * bRe + bIm * bIm
+        const det = aMagSq - bMagSq
+        if (det > 0.001) {
+          const s = 1 / Math.sqrt(det)
+          interpolated[0] = aRe * s
+          interpolated[1] = aIm * s
+          interpolated[2] = bRe * s
+          interpolated[3] = bIm * s
         }
 
+        const transform = interpolated as unknown as Matrix
         view.setTransform(transform)
-        tessellation.setViewTransform(transform)
-        // Walk toward target cell on EVERY frame to create cells along the path
-        tessellation.walkTowardCell(cellId)
+        // Don't call tessellation.setViewTransform during animation
+        // Just update the view for rendering
         draw()
 
         if (t < 1) {
           requestAnimationFrame(animate)
         } else {
-          // Animation complete - snap to the ACTUAL cell transform for consistency
-          // This ensures the view transform matches the graph-accumulated transform
-          const actualTransform = tessellation.navigateToCell(cellId)
-          if (actualTransform) {
-            view.setTransform(actualTransform)
-            tessellation.setViewTransform(actualTransform)
-            draw()
-            // Expand boundary so next click on any edge tile works
-            tessellation.expandVisibleBoundary()
-          }
+          // Animation complete - ensure final state is correct
+          view.setTransform(anim.endTransform as unknown as Matrix)
+          tessellation.setViewTransform(anim.endTransform as unknown as Matrix)
+          draw()
+          // Expand boundary so next click on any edge tile works
+          tessellation.expandVisibleBoundary()
           anim.active = false
         }
       }
