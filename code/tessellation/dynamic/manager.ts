@@ -2,194 +2,79 @@ import type { Point } from '@/form/point'
 import type { Matrix } from '@/form/matrix'
 import type { Tile, DynamicTessellationConfig } from './types'
 import { DEFAULT_DYNAMIC_CONFIG } from './types'
-import { mat3 } from 'gl-matrix'
+import { Hyperbolic2D } from '@/math/geometry/hyperbolic2d'
+import { identity } from '@/form/matrix'
 
 /**
  * Dynamic tessellation manager.
  * Generates tiles lazily as the view moves through hyperbolic space.
+ * Uses edge reflection (same as static tessellation) for correct geometry.
  */
 export class DynamicTessellationManager {
   private config: DynamicTessellationConfig
+  private geometry: Hyperbolic2D
   private tiles: Map<string, Tile> = new Map()
   private origin: Tile
   private viewCenter: Point = [0, 0, 1]
+  private viewTransform: Matrix = [1, 0, 0, 0, 1, 0, 0, 0, 1]
 
   // Precomputed geometry values
-  private edgeLength!: number
-  private centralAngle!: number
-  private vertexAngle!: number
-  private rotationMatrix!: Matrix
-  private inverseRotationMatrix!: Matrix
+  private edgeLength: number
+  private circumradius: number
 
   constructor(config: Partial<DynamicTessellationConfig> = {}) {
     this.config = { ...DEFAULT_DYNAMIC_CONFIG, ...config }
-    this.computeGeometry()
+    this.geometry = new Hyperbolic2D()
+    this.edgeLength = this.calculateEdgeLength()
+    this.circumradius = this.calculateCircumradius()
     this.origin = this.createOriginTile()
     this.tiles.set(this.origin.id, this.origin)
   }
 
   /**
-   * Compute tessellation geometry parameters.
+   * Calculate the edge length for a regular {p,q} polygon in hyperbolic space.
+   * cosh(a/2) = cos(π/q) / sin(π/p)
    */
-  private computeGeometry(): void {
+  private calculateEdgeLength(): number {
     const { p, q } = this.config
-
-    // Central angle of each edge from tile center
-    this.centralAngle = (2 * Math.PI) / p
-
-    // Interior angle at each vertex
-    this.vertexAngle = (2 * Math.PI) / q
-
-    // Edge length using hyperbolic law of cosines
-    // For a regular {p,q} tiling, the edge length satisfies:
-    // cosh(a) = cos(π/q) / sin(π/p)
-    const cosVertexHalf = Math.cos(Math.PI / q)
-    const sinCentralHalf = Math.sin(Math.PI / p)
-    this.edgeLength = Math.acosh(cosVertexHalf / sinCentralHalf)
-
-    // Rotation matrix for one edge (2π/p radians)
-    this.rotationMatrix = this.createRotationMatrix(this.centralAngle)
-    this.inverseRotationMatrix = this.createRotationMatrix(-this.centralAngle)
+    const angleP = Math.PI / p
+    const angleQ = Math.PI / q
+    const coshHalfA = Math.cos(angleQ) / Math.sin(angleP)
+    return 2 * Math.acosh(coshHalfA)
   }
 
   /**
-   * Create a rotation matrix around the origin in hyperbolic space.
+   * Calculate the circumradius (distance from center to vertex).
+   * cosh(R) = cos(π/p)cos(π/q) / (sin(π/p)sin(π/q))
    */
-  private createRotationMatrix(angle: number): Matrix {
-    const c = Math.cos(angle)
-    const s = Math.sin(angle)
-    // Rotation in the x-y plane (doesn't affect t coordinate)
-    return [c, -s, 0, s, c, 0, 0, 0, 1]
+  private calculateCircumradius(): number {
+    const { p, q } = this.config
+    const angleP = Math.PI / p
+    const angleQ = Math.PI / q
+    const coshR =
+      (Math.cos(angleP) * Math.cos(angleQ)) /
+      (Math.sin(angleP) * Math.sin(angleQ))
+    return Math.acosh(coshR)
   }
 
   /**
-   * Create a Lorentz boost (translation) matrix.
-   */
-  private createBoostMatrix(distance: number, dirX: number, dirY: number): Matrix {
-    const len = Math.sqrt(dirX * dirX + dirY * dirY)
-    if (len < 1e-10) {
-      return [1, 0, 0, 0, 1, 0, 0, 0, 1]
-    }
-
-    const ux = dirX / len
-    const uy = dirY / len
-    const c = Math.cosh(distance)
-    const s = Math.sinh(distance)
-
-    // Lorentz boost in direction (ux, uy)
-    return [
-      1 + (c - 1) * ux * ux,
-      (c - 1) * ux * uy,
-      s * ux,
-      (c - 1) * ux * uy,
-      1 + (c - 1) * uy * uy,
-      s * uy,
-      s * ux,
-      s * uy,
-      c,
-    ]
-  }
-
-  /**
-   * Multiply two 3x3 matrices.
-   */
-  private multiplyMatrices(a: Matrix, b: Matrix): Matrix {
-    const result: Matrix = [0, 0, 0, 0, 0, 0, 0, 0, 0]
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 3; j++) {
-        let sum = 0
-        for (let k = 0; k < 3; k++) {
-          sum += (a[i * 3 + k] ?? 0) * (b[k * 3 + j] ?? 0)
-        }
-        result[i * 3 + j] = sum
-      }
-    }
-    return result
-  }
-
-  /**
-   * Apply a matrix to a point.
-   */
-  private applyMatrix(m: Matrix, p: Point): Point {
-    const x = p[0] ?? 0
-    const y = p[1] ?? 0
-    const t = p[2] ?? 1
-    return [
-      (m[0] ?? 0) * x + (m[1] ?? 0) * y + (m[2] ?? 0) * t,
-      (m[3] ?? 0) * x + (m[4] ?? 0) * y + (m[5] ?? 0) * t,
-      (m[6] ?? 0) * x + (m[7] ?? 0) * y + (m[8] ?? 0) * t,
-    ]
-  }
-
-  /**
-   * Compute the center position for a neighbor tile.
-   */
-  private computeNeighborCenter(tile: Tile, edge: number): Point {
-    // Direction from tile center to edge midpoint
-    const angle = edge * this.centralAngle
-
-    // Distance from center to edge midpoint (apothem)
-    // For regular polygon: apothem = edgeLength / (2 * tan(π/p))
-    // But we need the hyperbolic distance to neighbor's center
-    // which is 2 * apothem in hyperbolic sense
-
-    // Compute neighbor center using reflection across the edge
-    // First, translate to edge midpoint, then reflect, then translate to neighbor center
-
-    // Direction toward this edge
-    const dirX = Math.cos(angle)
-    const dirY = Math.sin(angle)
-
-    // The neighbor's center is at distance 2*apothem from our center
-    // in direction of the edge
-    const neighborDist = this.computeCenterToCenterDistance()
-
-    // Boost in that direction
-    const boost = this.createBoostMatrix(neighborDist, dirX, dirY)
-    const neighborTransform = this.multiplyMatrices(tile.transform, boost)
-
-    return this.applyMatrix(neighborTransform, [0, 0, 1])
-  }
-
-  /**
-   * Compute the hyperbolic distance between adjacent tile centers.
-   */
-  private computeCenterToCenterDistance(): number {
-    const { p } = this.config
-    // Distance from center to edge midpoint (apothem)
-    // Using: cosh(apothem) = cos(π/p) / sin(π/q) * cosh(edgeLength/2)
-    // Simplified for regular tiling: distance between centers = 2 * apothem
-    // For {p,q}: this can be computed from the edge length
-
-    // Alternative: use the reflection formula
-    // The center-to-center distance d satisfies:
-    // cosh(d/2) = cos(π/p) / sin(vertexAngle/2)
-
-    const cosHalfCentral = Math.cos(Math.PI / p)
-    const sinHalfVertex = Math.sin(this.vertexAngle / 2)
-
-    const halfDist = Math.acosh(cosHalfCentral / sinHalfVertex)
-    return 2 * halfDist
-  }
-
-  /**
-   * Create the origin (central) tile.
+   * Create the origin (central) tile at the origin of hyperbolic space.
    */
   private createOriginTile(): Tile {
     const { p } = this.config
     const vertices: Point[] = []
+    const origin = this.geometry.origin()
 
-    // Distance from center to vertex
-    const vertexDist = this.computeCenterToVertexDistance()
-
+    // Generate vertices at equal angles around center
     for (let i = 0; i < p; i++) {
-      const angle = i * this.centralAngle + this.centralAngle / 2
-      const boost = this.createBoostMatrix(
-        vertexDist,
-        Math.cos(angle),
-        Math.sin(angle),
+      const angle = (2 * Math.PI * i) / p
+      const direction: Point = [Math.cos(angle), Math.sin(angle), 0]
+      const vertex = this.geometry.pointOnGeodesic(
+        origin,
+        direction,
+        this.circumradius,
       )
-      vertices.push(this.applyMatrix(boost, [0, 0, 1]))
+      vertices.push(vertex)
     }
 
     const center: Point = [0, 0, 1]
@@ -202,7 +87,7 @@ export class DynamicTessellationManager {
       spins: new Array(p).fill(-1),
       center,
       vertices,
-      transform: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      transform: identity(3),
       depth: 0,
       parentEdge: -1,
       lastAccessTime: Date.now(),
@@ -210,29 +95,26 @@ export class DynamicTessellationManager {
   }
 
   /**
-   * Compute distance from tile center to vertex.
+   * Compute the center of a polygon from its vertices.
    */
-  private computeCenterToVertexDistance(): number {
-    const { p, q } = this.config
-    // Using hyperbolic law of cosines for right triangle
-    // formed by center, edge midpoint, and vertex
-    const cosCentral = Math.cos(Math.PI / p)
-    const cosVertex = Math.cos(Math.PI / q)
-
-    // cosh(vertex_dist) = cos(π/p) * cos(π/q) / sin(π/p) / sin(π/q)
-    // Simplified: cosh(r) = cot(π/p) * cot(π/q)
-    const cotP = 1 / Math.tan(Math.PI / p)
-    const cotQ = 1 / Math.tan(Math.PI / q)
-
-    return Math.acosh(cotP * cotQ)
+  private computeCenter(vertices: Point[]): Point {
+    let x = 0,
+      y = 0,
+      t = 0
+    for (const v of vertices) {
+      x += v[0] ?? 0
+      y += v[1] ?? 0
+      t += v[2] ?? 1
+    }
+    const n = vertices.length
+    return this.geometry.normalize([x / n, y / n, t / n])
   }
 
   /**
-   * Compute a stable ID for a tile based on its center.
+   * Compute a stable ID for a tile based on its center position.
    */
   private computeTileId(center: Point): string {
-    // Quantize to avoid floating point issues
-    const precision = 1e8
+    const precision = 1e6
     const x = Math.round((center[0] ?? 0) * precision)
     const y = Math.round((center[1] ?? 0) * precision)
     const t = Math.round((center[2] ?? 0) * precision)
@@ -240,7 +122,26 @@ export class DynamicTessellationManager {
   }
 
   /**
-   * Get or create a neighbor tile.
+   * Generate the reflection matrix across an edge defined by two vertices.
+   */
+  private getEdgeReflection(v1: Point, v2: Point): Matrix {
+    const normal = this.geometry.geodesicThrough(v1, v2)
+    return this.geometry.reflection(normal)
+  }
+
+  /**
+   * Check if two points are approximately equal.
+   */
+  private pointsClose(a: Point, b: Point, epsilon: number = 1e-6): boolean {
+    const dx = (a[0] ?? 0) - (b[0] ?? 0)
+    const dy = (a[1] ?? 0) - (b[1] ?? 0)
+    const dt = (a[2] ?? 1) - (b[2] ?? 1)
+    return dx * dx + dy * dy + dt * dt < epsilon * epsilon
+  }
+
+  /**
+   * Get or create a neighbor tile across a given edge.
+   * Uses reflection across the edge (same as static tessellation).
    */
   getNeighbor(tile: Tile, edge: number): Tile {
     // Return existing neighbor if already generated
@@ -250,149 +151,126 @@ export class DynamicTessellationManager {
       return neighbor
     }
 
-    // Compute neighbor's center position
-    const neighborCenter = this.computeNeighborCenter(tile, edge)
+    const { p } = this.config
+    const v1 = tile.vertices[edge]!
+    const v2 = tile.vertices[(edge + 1) % p]!
+
+    // Get reflection across this edge
+    const reflection = this.getEdgeReflection(v1, v2)
+
+    // Reflect all vertices to get neighbor tile
+    const neighborVertices = tile.vertices.map(v => {
+      const reflected = this.geometry.applyMatrix(reflection, v)
+      return this.geometry.normalize(reflected)
+    })
+
+    const neighborCenter = this.computeCenter(neighborVertices)
     const neighborId = this.computeTileId(neighborCenter)
 
     // Check if this tile already exists (reached from different path)
     if (this.tiles.has(neighborId)) {
       const existing = this.tiles.get(neighborId)!
-      this.linkTiles(tile, edge, existing)
+      this.linkTiles(tile, edge, existing, v1, v2)
       existing.lastAccessTime = Date.now()
       return existing
     }
 
     // Create new tile
-    const neighbor = this.createNeighborTile(tile, edge, neighborCenter)
-    this.tiles.set(neighborId, neighbor)
-    this.linkTiles(tile, edge, neighbor)
+    const neighborTransform = this.geometry.compose(reflection, tile.transform)
 
+    const neighbor: Tile = {
+      id: neighborId,
+      type: p,
+      neighbors: new Array(p).fill(null),
+      spins: new Array(p).fill(-1),
+      center: neighborCenter,
+      vertices: neighborVertices,
+      transform: neighborTransform,
+      depth: tile.depth + 1,
+      parentEdge: -1,
+      lastAccessTime: Date.now(),
+    }
+
+    // Link the tiles
+    this.linkTiles(tile, edge, neighbor, v1, v2)
+
+    this.tiles.set(neighborId, neighbor)
     return neighbor
   }
 
   /**
-   * Create a new neighbor tile.
+   * Link two adjacent tiles by finding matching edges.
    */
-  private createNeighborTile(
-    parent: Tile,
-    edge: number,
-    center: Point,
-  ): Tile {
+  private linkTiles(
+    tile1: Tile,
+    edge1: number,
+    tile2: Tile,
+    sharedV1: Point,
+    sharedV2: Point,
+  ): void {
     const { p } = this.config
 
-    // Compute transform to neighbor's center
-    const angle = edge * this.centralAngle
-    const dirX = Math.cos(angle)
-    const dirY = Math.sin(angle)
-    const dist = this.computeCenterToCenterDistance()
-
-    const boost = this.createBoostMatrix(dist, dirX, dirY)
-    const transform = this.multiplyMatrices(parent.transform, boost)
-
-    // Compute vertices
-    const vertexDist = this.computeCenterToVertexDistance()
-    const vertices: Point[] = []
-
-    // Neighbor is rotated relative to parent
-    // The edge connecting back to parent is at opposite side
-    const parentEdge = (edge + p / 2) % p
-
-    for (let i = 0; i < p; i++) {
-      // Adjust angle so that parentEdge points back correctly
-      const vertexAngle =
-        i * this.centralAngle + this.centralAngle / 2 + Math.PI
-      const vBoost = this.createBoostMatrix(
-        vertexDist,
-        Math.cos(vertexAngle),
-        Math.sin(vertexAngle),
-      )
-      const vertexTransform = this.multiplyMatrices(transform, vBoost)
-      vertices.push(this.applyMatrix(vertexTransform, [0, 0, 1]))
-    }
-
-    const id = this.computeTileId(center)
-
-    return {
-      id,
-      type: p,
-      neighbors: new Array(p).fill(null),
-      spins: new Array(p).fill(-1),
-      center,
-      vertices,
-      transform,
-      depth: parent.depth + 1,
-      parentEdge: Math.floor(p / 2), // Opposite edge leads back to parent
-      lastAccessTime: Date.now(),
-    }
-  }
-
-  /**
-   * Link two adjacent tiles.
-   */
-  private linkTiles(tile1: Tile, edge1: number, tile2: Tile): void {
     tile1.neighbors[edge1] = tile2
 
     // Find which edge of tile2 connects to tile1
-    const edge2 = this.findConnectingEdge(tile2, tile1)
-    if (edge2 >= 0) {
-      tile2.neighbors[edge2] = tile1
-      tile1.spins[edge1] = edge2
-      tile2.spins[edge2] = edge1
-    }
-  }
+    // The shared edge vertices are in reverse order in the neighbor
+    for (let j = 0; j < p; j++) {
+      const nv1 = tile2.vertices[j]!
+      const nv2 = tile2.vertices[(j + 1) % p]!
 
-  /**
-   * Find which edge of tile2 connects to tile1.
-   */
-  private findConnectingEdge(tile2: Tile, tile1: Tile): number {
-    const dist = this.computeCenterToCenterDistance()
-
-    for (let i = 0; i < tile2.type; i++) {
-      // Check if edge i of tile2 points toward tile1
-      const angle = i * this.centralAngle
-      const dirX = Math.cos(angle)
-      const dirY = Math.sin(angle)
-
-      const boost = this.createBoostMatrix(dist, dirX, dirY)
-      const expectedCenter = this.applyMatrix(
-        this.multiplyMatrices(tile2.transform, boost),
-        [0, 0, 1],
-      )
-
-      const expectedId = this.computeTileId(expectedCenter)
-      if (expectedId === tile1.id) {
-        return i
+      // Check if this edge matches (vertices in reverse order)
+      if (this.pointsClose(nv1, sharedV2) && this.pointsClose(nv2, sharedV1)) {
+        tile2.neighbors[j] = tile1
+        tile1.spins[edge1] = j
+        tile2.spins[j] = edge1
+        tile2.parentEdge = j
+        break
       }
     }
-
-    // Fallback: use geometric comparison
-    return Math.floor(tile2.type / 2)
   }
 
   /**
    * Get all tiles visible from the current view center.
+   * Generates tiles until they fill the visible disk area.
    */
   getVisibleTiles(): Tile[] {
     const visible: Tile[] = []
     const visited = new Set<string>()
 
-    // BFS from origin toward view center, then outward
+    // BFS from origin, expanding toward visible area
+    // We explore all tiles within a hyperbolic distance limit,
+    // but only return those that are actually visible on screen
     const queue: Tile[] = [this.origin]
 
-    while (queue.length > 0 && visible.length < this.config.maxTiles) {
+    // Maximum hyperbolic distance to explore (larger than visible radius
+    // to ensure we reach tiles that might be visible after transform)
+    const maxExploreDistance = this.config.visibleRadius + 3.0
+
+    while (queue.length > 0 && visited.size < this.config.maxTiles * 2) {
       const tile = queue.shift()!
 
       if (visited.has(tile.id)) continue
       visited.add(tile.id)
 
-      // Check if tile is within visible radius
+      // Check distance from view center for exploration limit
       const dist = this.hyperbolicDistance(this.viewCenter, tile.center)
-      if (dist > this.config.visibleRadius) continue
 
-      visible.push(tile)
-      tile.lastAccessTime = Date.now()
+      // Stop exploring if too far from view center
+      if (dist > maxExploreDistance) continue
 
-      // Add neighbors to queue
+      // Check if tile is actually visible on screen
+      const isCenterNear = dist <= this.config.visibleRadius
+      const hasVisibleVertex = this.hasVertexInDisk(tile, 1.1)
+
+      if (isCenterNear || hasVisibleVertex) {
+        visible.push(tile)
+        tile.lastAccessTime = Date.now()
+
+        // Stop collecting visible tiles if we have enough
+        if (visible.length >= this.config.maxTiles) break
+      }
+
+      // Always explore neighbors (within exploration distance)
       for (let i = 0; i < tile.type; i++) {
         const neighbor = this.getNeighbor(tile, i)
         if (!visited.has(neighbor.id)) {
@@ -405,11 +283,41 @@ export class DynamicTessellationManager {
   }
 
   /**
-   * Compute hyperbolic distance between two points.
+   * Check if any vertex of a tile projects inside the Poincare disk
+   * after applying the view transform.
+   */
+  private hasVertexInDisk(tile: Tile, diskRadius: number): boolean {
+    for (const v of tile.vertices) {
+      // Apply view transform to vertex
+      const transformed = this.geometry.applyMatrix(this.viewTransform, v)
+      const normalized = this.geometry.normalize(transformed)
+      const [u, vCoord] = this.hyperboloidToPoincare(normalized)
+      const r = Math.sqrt(u * u + vCoord * vCoord)
+      if (r < diskRadius) {
+        return true
+      }
+    }
+    return false
+  }
+
+  /**
+   * Project hyperboloid point to Poincare disk.
+   */
+  private hyperboloidToPoincare(p: Point): [number, number] {
+    const x = p[0] ?? 0
+    const y = p[1] ?? 0
+    const t = p[2] ?? 1
+    const denom = 1 + t
+    if (Math.abs(denom) < 1e-10) {
+      return [0, 0]
+    }
+    return [x / denom, y / denom]
+  }
+
+  /**
+   * Compute hyperbolic distance between two points using Minkowski inner product.
    */
   private hyperbolicDistance(a: Point, b: Point): number {
-    // Using Minkowski inner product: <a,b> = a.x*b.x + a.y*b.y - a.t*b.t
-    // cosh(d) = -<a,b> for points on the hyperboloid
     const ax = a[0] ?? 0
     const ay = a[1] ?? 0
     const at = a[2] ?? 1
@@ -417,8 +325,9 @@ export class DynamicTessellationManager {
     const by = b[1] ?? 0
     const bt = b[2] ?? 1
 
+    // Minkowski inner product: <a,b> = a.x*b.x + a.y*b.y - a.t*b.t
+    // For points on hyperboloid: cosh(d) = -<a,b>
     const innerProduct = ax * bx + ay * by - at * bt
-    // Clamp to avoid numerical issues with acosh
     const clamped = Math.max(1, -innerProduct)
     return Math.acosh(clamped)
   }
@@ -432,11 +341,21 @@ export class DynamicTessellationManager {
 
   /**
    * Set view center from a transform matrix.
+   * The view center is the point in original space that appears at the screen center.
+   * For a Lorentz transform T, this is T^(-1) * origin.
+   * For Lorentz transforms: T^(-1) = η * T^T * η, where η = diag(1,1,-1).
+   * This simplifies to: viewCenter = (-T[6], -T[7], T[8]) for origin input.
    */
   setViewTransform(transform: Matrix): void {
-    // The view center is the origin transformed by the inverse of the view
-    // For now, just extract where the origin maps to
-    this.viewCenter = this.applyMatrix(transform, [0, 0, 1])
+    this.viewTransform = transform
+
+    // Extract the inverse transform applied to origin
+    // For Lorentz transform, the point that maps to origin is:
+    // P = (-sinh*ux, -sinh*uy, cosh) = (-T[6], -T[7], T[8])
+    const t6 = transform[6] ?? 0
+    const t7 = transform[7] ?? 0
+    const t8 = transform[8] ?? 1
+    this.viewCenter = this.geometry.normalize([-t6, -t7, t8])
   }
 
   /**
@@ -454,7 +373,14 @@ export class DynamicTessellationManager {
   }
 
   /**
-   * Collect garbage (remove distant tiles).
+   * Get the geometry instance.
+   */
+  getGeometry(): Hyperbolic2D {
+    return this.geometry
+  }
+
+  /**
+   * Collect garbage (remove distant tiles that haven't been accessed recently).
    */
   collectGarbage(): void {
     if (this.tiles.size <= this.config.maxTiles) return
@@ -468,7 +394,7 @@ export class DynamicTessellationManager {
       }))
       .sort((a, b) => b.score - a.score)
 
-    // Evict highest-scored tiles
+    // Evict highest-scored tiles (furthest and oldest)
     const toEvict = scored.slice(0, this.tiles.size - this.config.maxTiles)
 
     for (const { tile } of toEvict) {
@@ -489,7 +415,6 @@ export class DynamicTessellationManager {
   private computeEvictionScore(tile: Tile): number {
     const age = Date.now() - tile.lastAccessTime
     const dist = this.hyperbolicDistance(this.viewCenter, tile.center)
-
     return age * 0.001 + dist * 10
   }
 
