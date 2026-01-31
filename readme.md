@@ -18,12 +18,12 @@
 
 ## Introduction
 
-`@cluesurf/hive` is vibe-coding our way through creating a TypeScript
-library for visualizing and exploring the 3 main geometries. It provides
-a unified framework for working with hyperbolic, spherical, and
-Euclidean spaces in 2D, 3D, and higher dimensions. The library enables
-generation of tessellations, honeycombs, fractals, kaleidoscopic
-patterns, and cellular automata across all three geometries.
+Hive is vibe-coding our way through creating a TypeScript library for
+visualizing and exploring the 3 main geometries. It provides a unified
+framework for working with hyperbolic, spherical, and Euclidean spaces
+in 2D, 3D, and higher dimensions. The library enables generation of
+tessellations, honeycombs, fractals, kaleidoscopic patterns, and
+cellular automata across all three geometries.
 
 The core design uses pluggable geometry implementations with a shared
 abstract interface. This means the same algorithms for tessellation,
