@@ -1,5 +1,39 @@
 # Implementation Plan
 
+## Testing
+
+Use vitest for testing. Tests go alongside code with `.test.ts` suffix.
+
+```bash
+# Add to devDependencies:
+# "vitest": "^3.0.0"
+
+# Add to scripts:
+# "test": "vitest run",
+# "test:watch": "vitest"
+```
+
+See `vitest.config.ts` for configuration. The `@/` alias maps to
+`./code/*` for imports.
+
+## Dependencies
+
+Use established libraries for common operations:
+
+```bash
+# Add to dependencies:
+# "gl-matrix": "^3.4.0"   # Matrix/vector math (optimized for WebGL)
+```
+
+**gl-matrix** provides:
+- `vec2`, `vec3`, `vec4` - Vector operations
+- `mat3`, `mat4` - Matrix operations
+- Optimized for performance (TypedArrays, no allocations)
+- Standard in WebGL/graphics community
+
+We wrap gl-matrix in our own types for the geometry API, but use it
+internally for all matrix math.
+
 ## Phase 1: Core Mathematics
 
 ### 1.1 Primitive Types

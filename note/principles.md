@@ -102,6 +102,34 @@ projection (Poincare, Klein, stereographic).
 
 ## Performance
 
+### Avoid Allocation in Hot Paths
+
+Functions called frequently (transforms, matrix operations) should accept
+an output array parameter rather than allocating new arrays. This reduces
+garbage collection pressure. Follow the gl-matrix pattern.
+
+```typescript
+// Good: Output parameter avoids allocation
+rotation(angle: number, out: Matrix): Matrix {
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  out[0] = c; out[1] = -s; out[2] = 0
+  out[3] = s; out[4] = c;  out[5] = 0
+  out[6] = 0; out[7] = 0;  out[8] = 1
+  return out
+}
+
+// Avoid: Allocates new array every call
+rotation(angle: number): Matrix {
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  return [c, -s, 0, s, c, 0, 0, 0, 1]  // GC pressure
+}
+```
+
+For convenience, provide overloads or wrapper functions that allocate
+when the caller doesn't need to avoid allocation.
+
 ### Hybrid Data Layout
 
 Objects for API ergonomics, typed arrays for GPU batching.

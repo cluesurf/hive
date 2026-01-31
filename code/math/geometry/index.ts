@@ -1,0 +1,6 @@
+export { Euclidean2D } from './euclidean2d'
+export { Euclidean3D } from './euclidean3d'
+export { Hyperbolic2D } from './hyperbolic2d'
+export { Hyperbolic3D } from './hyperbolic3d'
+export { Spherical2D } from './spherical2d'
+export { Spherical3D } from './spherical3d'
