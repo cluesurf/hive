@@ -1,6 +1,5 @@
 import type { Matrix } from '@/form/matrix'
 import type { Point } from '@/form/point'
-import { identity, multiply } from '@/form/matrix'
 import type { InteractiveGeometry, DiskPoint } from './types'
 import {
   hyperboloidToPoincare,
@@ -10,8 +9,21 @@ import {
 /**
  * Interactive geometry implementation for 2D hyperbolic space.
  *
- * Uses the hyperboloid model internally and Poincare disk for display.
- * Translations are Lorentz boosts in Minkowski space.
+ * Uses SU(1,1) representation for navigation, which is numerically stable.
+ *
+ * The transform is stored as SU(1,1) parameters [a_re, a_im, b_re, b_im]
+ * representing the Möbius transformation:
+ *   f(z) = (a*z + b) / (conj(b)*z + conj(a))
+ *
+ * Constraint: |a|² - |b|² = 1 (enforced via renormalization after composition)
+ *
+ * Key properties:
+ * - View center in disk: z_center = -b/a
+ * - Composition: SU(1,1) matrix multiplication
+ * - Numerically stable (only one scalar constraint to maintain)
+ *
+ * For compatibility with Matrix type, stored as 9-element array:
+ * [a_re, a_im, b_re, b_im, 0, 0, 0, 0, 1]
  */
 export class Hyperbolic2DInteraction implements InteractiveGeometry {
   /**
@@ -30,115 +42,235 @@ export class Hyperbolic2DInteraction implements InteractiveGeometry {
   }
 
   /**
-   * Build a Lorentz boost matrix that translates from one disk point to another.
+   * Build an SU(1,1) translation from a drag displacement.
    *
-   * The boost moves the "from" point toward the origin and the origin toward "to".
-   * This creates the effect of panning the view.
+   * A hyperbolic translation by w in the Poincaré disk is:
+   *   f(z) = (z + w) / (conj(w)*z + 1)
+   *
+   * In SU(1,1) form:
+   *   a = 1 / sqrt(1 - |w|²)
+   *   b = w / sqrt(1 - |w|²)
    */
   buildTranslation(from: DiskPoint, to: DiskPoint): Matrix {
-    // Compute the displacement in the Poincare disk
-    const du = to.u - from.u
-    const dv = to.v - from.v
+    // Compute displacement vector w
+    let wRe = to.u - from.u
+    let wIm = to.v - from.v
 
-    const euclideanDist = Math.sqrt(du * du + dv * dv)
+    // Scale for sensitivity (1.5x feels more responsive)
+    const sensitivity = 1.5
+    wRe *= sensitivity
+    wIm *= sensitivity
 
-    if (euclideanDist < 1e-10) {
-      return identity(3)
+    // Clamp |w| to stay inside the disk (max 0.5 per drag update for stability)
+    const wMagSq = wRe * wRe + wIm * wIm
+    const maxMag = 0.5
+    if (wMagSq > maxMag * maxMag) {
+      const scale = maxMag / Math.sqrt(wMagSq)
+      wRe *= scale
+      wIm *= scale
     }
 
-    // Direction unit vector
-    const ux = du / euclideanDist
-    const uy = dv / euclideanDist
+    const wMagSqClamped = wRe * wRe + wIm * wIm
+    if (wMagSqClamped < 1e-12) {
+      return this.identityTransform()
+    }
 
-    // Convert Euclidean distance in Poincare disk to hyperbolic distance
-    // For small distances: hyperbolicDist ≈ 2 * atanh(euclideanDist)
-    // But we need to be careful near the boundary
-    const clampedDist = Math.min(euclideanDist, 0.99)
-    const hyperbolicDist = 2 * Math.atanh(clampedDist)
+    // SU(1,1) parameters for translation by w
+    const factor = 1 / Math.sqrt(1 - wMagSqClamped)
+    const aRe = factor
+    const aIm = 0
+    const bRe = wRe * factor
+    const bIm = wIm * factor
 
-    // Scale by sensitivity (smaller movements feel better)
-    const scaledDist = hyperbolicDist * 0.5
-
-    // Build Lorentz boost matrix
-    return this.buildBoostMatrix(ux, uy, scaledDist)
+    return [aRe, aIm, bRe, bIm, 0, 0, 0, 0, 1]
   }
 
   /**
-   * Build a Lorentz boost matrix for translation in direction (ux, uy)
-   * by hyperbolic distance d.
+   * Compose two SU(1,1) transforms via matrix multiplication.
    *
-   * The boost matrix in Minkowski space ℝ²'¹ is:
+   * For SU(1,1) matrices:
+   *   [a1  b1]   [a2  b2]   [a1*a2 + b1*conj(b2)   a1*b2 + b1*conj(a2)]
+   *   [b1* a1*] × [b2* a2*] = [...]
    *
-   * | 1 + (cosh(d)-1)*ux²    (cosh(d)-1)*ux*uy     sinh(d)*ux |
-   * | (cosh(d)-1)*ux*uy      1 + (cosh(d)-1)*uy²   sinh(d)*uy |
-   * | sinh(d)*ux             sinh(d)*uy            cosh(d)    |
+   * Result: a = a1*a2 + b1*conj(b2), b = a1*b2 + b1*conj(a2)
+   *
+   * After composition, renormalize to ensure |a|² - |b|² = 1.
    */
-  private buildBoostMatrix(ux: number, uy: number, d: number): Matrix {
-    const coshD = Math.cosh(d)
-    const sinhD = Math.sinh(d)
-    const coshM1 = coshD - 1 // cosh(d) - 1
+  composeTransforms(t1: Matrix, t2: Matrix): Matrix {
+    const a1Re = t1[0] ?? 1
+    const a1Im = t1[1] ?? 0
+    const b1Re = t1[2] ?? 0
+    const b1Im = t1[3] ?? 0
 
-    return [
-      1 + coshM1 * ux * ux,
-      coshM1 * ux * uy,
-      sinhD * ux,
-      coshM1 * ux * uy,
-      1 + coshM1 * uy * uy,
-      sinhD * uy,
-      sinhD * ux,
-      sinhD * uy,
-      coshD,
-    ]
+    const a2Re = t2[0] ?? 1
+    const a2Im = t2[1] ?? 0
+    const b2Re = t2[2] ?? 0
+    const b2Im = t2[3] ?? 0
+
+    // a = a1*a2 + b1*conj(b2)
+    // a1*a2 = (a1Re*a2Re - a1Im*a2Im) + (a1Re*a2Im + a1Im*a2Re)i
+    // b1*conj(b2) = (b1Re*b2Re + b1Im*b2Im) + (-b1Re*b2Im + b1Im*b2Re)i
+    const aRe = (a1Re * a2Re - a1Im * a2Im) + (b1Re * b2Re + b1Im * b2Im)
+    const aIm = (a1Re * a2Im + a1Im * a2Re) + (-b1Re * b2Im + b1Im * b2Re)
+
+    // b = a1*b2 + b1*conj(a2)
+    // a1*b2 = (a1Re*b2Re - a1Im*b2Im) + (a1Re*b2Im + a1Im*b2Re)i
+    // b1*conj(a2) = (b1Re*a2Re + b1Im*a2Im) + (-b1Re*a2Im + b1Im*a2Re)i
+    const bRe = (a1Re * b2Re - a1Im * b2Im) + (b1Re * a2Re + b1Im * a2Im)
+    const bIm = (a1Re * b2Im + a1Im * b2Re) + (-b1Re * a2Im + b1Im * a2Re)
+
+    // Renormalize: enforce |a|² - |b|² = 1
+    const aMagSq = aRe * aRe + aIm * aIm
+    const bMagSq = bRe * bRe + bIm * bIm
+    const det = aMagSq - bMagSq
+
+    if (det <= 0.001) {
+      // Degenerate, return identity
+      return this.identityTransform()
+    }
+
+    const s = 1 / Math.sqrt(det)
+
+    return [aRe * s, aIm * s, bRe * s, bIm * s, 0, 0, 0, 0, 1]
   }
 
   /**
-   * Compose two transforms by matrix multiplication.
-   */
-  composeTransforms(a: Matrix, b: Matrix): Matrix {
-    return multiply(a, b)
-  }
-
-  /**
-   * Get the identity transform (3x3 identity matrix).
+   * Get the identity SU(1,1) transform (a=1, b=0).
    */
   identityTransform(): Matrix {
-    return identity(3)
+    return [1, 0, 0, 0, 0, 0, 0, 0, 1]
   }
 
   /**
-   * Apply a transform matrix to a hyperboloid point.
+   * Apply the SU(1,1) transform to a hyperboloid point.
+   *
+   * Pipeline:
+   * 1. Project hyperboloid → Poincaré disk
+   * 2. Apply Möbius transform: f(z) = (a*z + b) / (conj(b)*z + conj(a))
+   * 3. Convert back to hyperboloid
    */
   applyTransform(transform: Matrix, point: Point): Point {
-    const x = point[0] ?? 0
-    const y = point[1] ?? 0
-    const t = point[2] ?? 1
+    // 1. Hyperboloid → Poincaré disk
+    const [u, v] = hyperboloidToPoincare(point)
 
-    const m = transform
-    return [
-      (m[0] ?? 0) * x + (m[1] ?? 0) * y + (m[2] ?? 0) * t,
-      (m[3] ?? 0) * x + (m[4] ?? 0) * y + (m[5] ?? 0) * t,
-      (m[6] ?? 0) * x + (m[7] ?? 0) * y + (m[8] ?? 0) * t,
-    ]
+    // 2. Apply Möbius transform
+    const aRe = transform[0] ?? 1
+    const aIm = transform[1] ?? 0
+    const bRe = transform[2] ?? 0
+    const bIm = transform[3] ?? 0
+
+    // f(z) = (a*z + b) / (conj(b)*z + conj(a))
+    // z = u + v*i
+
+    // Numerator: a*z + b
+    const numRe = (aRe * u - aIm * v) + bRe
+    const numIm = (aRe * v + aIm * u) + bIm
+
+    // Denominator: conj(b)*z + conj(a) = (bRe - bIm*i)(u + v*i) + (aRe - aIm*i)
+    const denRe = (bRe * u + bIm * v) + aRe
+    const denIm = (bRe * v - bIm * u) - aIm
+
+    // Complex division
+    const denMagSq = denRe * denRe + denIm * denIm
+    if (denMagSq < 1e-12) {
+      return point // Degenerate, return original
+    }
+
+    let resultU = (numRe * denRe + numIm * denIm) / denMagSq
+    let resultV = (numIm * denRe - numRe * denIm) / denMagSq
+
+    // Clamp to disk (numerical safety)
+    const rSq = resultU * resultU + resultV * resultV
+    if (rSq >= 0.9999) {
+      const scale = 0.999 / Math.sqrt(rSq)
+      resultU *= scale
+      resultV *= scale
+    }
+
+    // 3. Poincaré disk → Hyperboloid
+    return poincareToHyperboloid([resultU, resultV])
   }
 
   /**
    * Normalize a point to ensure it lies on the hyperboloid.
-   * The hyperboloid constraint is: x² + y² - t² = -1
+   * Constraint: x² + y² - t² = -1, equivalently t² - x² - y² = 1
    */
-  normalizePoint(point: Point): Point {
-    const x = point[0] ?? 0
-    const y = point[1] ?? 0
-    const t = point[2] ?? 1
+  normalizePoint(point: Point, out?: Point): Point {
+    const px = point[0] ?? 0
+    const py = point[1] ?? 0
+    const pt = point[2] ?? 1
 
-    // Compute Minkowski norm squared: x² + y² - t²
-    const dot = x * x + y * y - t * t
+    // Compute m = t² - x² - y² (should be +1 for valid hyperboloid points)
+    const m = pt * pt - px * px - py * py
 
-    // Should be -1 for points on the hyperboloid
-    const scale = 1 / Math.sqrt(Math.abs(dot))
+    // If m > 0, we can rescale to project back to hyperboloid
+    if (m > 1e-10) {
+      const scale = 1 / Math.sqrt(m)
+      const sign = pt >= 0 ? 1 : -1
 
-    // Ensure t > 0 (upper sheet)
-    const sign = t >= 0 ? 1 : -1
+      const x = sign * scale * px
+      const y = sign * scale * py
+      const z = sign * scale * pt
 
-    return [sign * scale * x, sign * scale * y, sign * scale * t]
+      if (out) {
+        out[0] = x
+        out[1] = y
+        out[2] = z
+        return out
+      }
+      return [x, y, z]
+    }
+
+    // Fallback: keep x, y and recompute t to satisfy t² = 1 + x² + y²
+    const newT = Math.sqrt(1 + px * px + py * py)
+
+    if (out) {
+      out[0] = px
+      out[1] = py
+      out[2] = newT
+      return out
+    }
+    return [px, py, newT]
+  }
+
+  /**
+   * Get the view center in the Poincaré disk.
+   * For SU(1,1) transform, the world point at screen center is: z = -b/a
+   */
+  getViewCenterDisk(transform: Matrix): DiskPoint {
+    const aRe = transform[0] ?? 1
+    const aIm = transform[1] ?? 0
+    const bRe = transform[2] ?? 0
+    const bIm = transform[3] ?? 0
+
+    // -b/a = -(bRe + bIm*i) / (aRe + aIm*i)
+    // = -(b * conj(a)) / |a|²
+    const aMagSq = aRe * aRe + aIm * aIm
+    if (aMagSq < 1e-12) {
+      return { u: 0, v: 0 }
+    }
+
+    // -b * conj(a) = -(bRe + bIm*i)(aRe - aIm*i)
+    // = -(bRe*aRe + bIm*aIm) - (-bRe*aIm + bIm*aRe)*i
+    const u = -(bRe * aRe + bIm * aIm) / aMagSq
+    const v = -(-bRe * aIm + bIm * aRe) / aMagSq
+
+    return { u, v }
+  }
+
+  /**
+   * Get the view center in hyperboloid coordinates.
+   */
+  getViewCenterHyperboloid(transform: Matrix): Point {
+    const { u, v } = this.getViewCenterDisk(transform)
+
+    // Clamp to valid disk
+    const rSq = u * u + v * v
+    if (rSq >= 0.9999) {
+      const scale = 0.999 / Math.sqrt(rSq)
+      return poincareToHyperboloid([u * scale, v * scale])
+    }
+
+    return poincareToHyperboloid([u, v])
   }
 }

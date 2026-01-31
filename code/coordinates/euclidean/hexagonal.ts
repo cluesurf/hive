@@ -66,14 +66,20 @@ export class HexagonalCoordinates
     return { x: 0, y: 0 }
   }
 
-  neighbor(tile: EuclideanTileId, direction: Direction): EuclideanTileId {
+  neighbor(
+    tile: EuclideanTileId,
+    direction: Direction,
+  ): EuclideanTileId {
     const dir = ((direction % 6) + 6) % 6
     const d = HEX_DIRECTIONS[dir]
     return { x: tile.x + d.x, y: tile.y + d.y }
   }
 
   neighbors(tile: EuclideanTileId): EuclideanTileId[] {
-    return HEX_DIRECTIONS.map(d => ({ x: tile.x + d.x, y: tile.y + d.y }))
+    return HEX_DIRECTIONS.map(d => ({
+      x: tile.x + d.x,
+      y: tile.y + d.y,
+    }))
   }
 
   directionTo(from: EuclideanTileId, to: EuclideanTileId): Direction {
@@ -81,7 +87,7 @@ export class HexagonalCoordinates
     const dy = to.y - from.y
 
     for (let i = 0; i < HEX_DIRECTIONS.length; i++) {
-      if (HEX_DIRECTIONS[i].x === dx && HEX_DIRECTIONS[i].y === dy) {
+      if (HEX_DIRECTIONS[i]!.x === dx && HEX_DIRECTIONS[i]!.y === dy) {
         return i
       }
     }
@@ -120,7 +126,8 @@ export class HexagonalCoordinates
    * Convert axial to pixel coordinates (pointy-top).
    */
   center(tile: EuclideanTileId): Point2D {
-    const x = this.size * (Math.sqrt(3) * tile.x + (Math.sqrt(3) / 2) * tile.y)
+    const x =
+      this.size * (Math.sqrt(3) * tile.x + (Math.sqrt(3) / 2) * tile.y)
     const y = this.size * ((3 / 2) * tile.y)
     return [x, y]
   }
@@ -254,20 +261,29 @@ export class TriangularCoordinates
     return (tile.x + tile.y) % 2 === 0
   }
 
-  neighbor(tile: EuclideanTileId, direction: Direction): EuclideanTileId {
-    const dirs = this.isUpward(tile) ? TRI_DIRECTIONS_UP : TRI_DIRECTIONS_DOWN
+  neighbor(
+    tile: EuclideanTileId,
+    direction: Direction,
+  ): EuclideanTileId {
+    const dirs = this.isUpward(tile)
+      ? TRI_DIRECTIONS_UP
+      : TRI_DIRECTIONS_DOWN
     const dir = ((direction % 3) + 3) % 3
     const d = dirs[dir]
     return { x: tile.x + d.x, y: tile.y + d.y }
   }
 
   neighbors(tile: EuclideanTileId): EuclideanTileId[] {
-    const dirs = this.isUpward(tile) ? TRI_DIRECTIONS_UP : TRI_DIRECTIONS_DOWN
+    const dirs = this.isUpward(tile)
+      ? TRI_DIRECTIONS_UP
+      : TRI_DIRECTIONS_DOWN
     return dirs.map(d => ({ x: tile.x + d.x, y: tile.y + d.y }))
   }
 
   directionTo(from: EuclideanTileId, to: EuclideanTileId): Direction {
-    const dirs = this.isUpward(from) ? TRI_DIRECTIONS_UP : TRI_DIRECTIONS_DOWN
+    const dirs = this.isUpward(from)
+      ? TRI_DIRECTIONS_UP
+      : TRI_DIRECTIONS_DOWN
     const dx = to.x - from.x
     const dy = to.y - from.y
 

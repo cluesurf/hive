@@ -1,14 +1,24 @@
-export * from './types'
-
-export { Hyperbolic2DTessellation } from './hyperbolic2d'
-
-// Dynamic tessellation (rename Tile to avoid conflict)
-export {
-  DynamicTessellationManager,
-  DEFAULT_DYNAMIC_CONFIG,
-} from './dynamic'
+// Static tessellation types (old system)
 export type {
-  Tile as DynamicTile,
-  Walker,
-  DynamicTessellationConfig,
-} from './dynamic'
+  Tile as StaticTile,
+  TessellationConfig as StaticTessellationConfig,
+  Tessellation,
+} from './types'
+export {
+  getCurvatureType,
+  validateConfig,
+  isHyperbolic,
+  isEuclidean,
+  isSpherical,
+  getDefectAngle,
+  getPolygonAngle,
+  getVertexAngle,
+} from './types'
+
+// Address-based dynamic tessellation (current system)
+export {
+  Hyperbolic2DTessellation,
+  DEFAULT_TESSELLATION_CONFIG,
+} from './hyperbolic2d'
+
+export type { Tile, VisibleTile, TessellationConfig } from './hyperbolic2d'

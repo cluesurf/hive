@@ -1,12 +1,15 @@
 import type { MetaFunction, LoaderFunctionArgs } from '@remix-run/node'
 import { useLoaderData, Link } from '@remix-run/react'
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { DynamicTessellationManager } from '@cluesurf/hive/tessellation'
+import {
+  Hyperbolic2DTessellation,
+  type VisibleTile,
+} from '@cluesurf/hive/tessellation'
 import {
   Canvas2DRenderer,
   createScene,
-  dynamicTilesToNodes,
   setupParentReferences,
+  addressedTilesToNodes,
 } from '@cluesurf/hive/rendering'
 import {
   InteractionController,
@@ -19,26 +22,7 @@ import {
   FocusNavigation,
   hitTest,
 } from '@cluesurf/hive/focus'
-
-/**
- * Extract view center from a Lorentz transform matrix.
- * The view center is the point in original space that maps to the screen center.
- * For Lorentz transform T, this is T^(-1) * origin = (-T[6], -T[7], T[8]) normalized.
- */
-function getViewCenter(transform: number[]): [number, number, number] {
-  const t6 = transform[6] ?? 0
-  const t7 = transform[7] ?? 0
-  const t8 = transform[8] ?? 1
-  // Normalize the point on the hyperboloid
-  const x = -t6
-  const y = -t7
-  const t = t8
-  const norm = Math.sqrt(t * t - x * x - y * y)
-  if (norm > 0) {
-    return [x / norm * Math.sign(t), y / norm * Math.sign(t), Math.abs(t) / norm]
-  }
-  return [0, 0, 1]
-}
+import { PoincareGeometry } from '@cluesurf/hive/rendering/poincare-geometry'
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -70,13 +54,15 @@ export default function HyperbolicTiling() {
   const rendererRef = useRef<Canvas2DRenderer | null>(null)
   const controllerRef = useRef<InteractionController | null>(null)
   const viewRef = useRef<GeometryView | null>(null)
-  const tessellationRef = useRef<DynamicTessellationManager | null>(null)
+  const tessellationRef = useRef<Hyperbolic2DTessellation | null>(null)
   const focusManagerRef = useRef<FocusManager | null>(null)
   const focusRingRef = useRef<FocusRing | null>(null)
   const focusNavRef = useRef<FocusNavigation | null>(null)
 
+  // Geometry adapter for Poincaré disk (treats coords as euclidean [-1,1] range)
+  const geometryRef = useRef(new PoincareGeometry())
+
   const [zoom, setZoom] = useState(0.9)
-  const [visibleRadius, setVisibleRadius] = useState(3.0)
   const [tileCount, setTileCount] = useState(0)
   const [totalTiles, setTotalTiles] = useState(0)
   const [focusedTileId, setFocusedTileId] = useState<string | null>(null)
@@ -112,17 +98,15 @@ export default function HyperbolicTiling() {
       tessellation.setViewTransform(view.getTransform())
     }
 
-    // Get visible tiles dynamically
+    // Get visible tiles (vertices already in Poincaré disk coords)
     const visibleTiles = tessellation.getVisibleTiles()
     setTileCount(visibleTiles.length)
     setTotalTiles(tessellation.getTileCount())
 
     // Convert to scene nodes and render
-    // Pass viewCenter for distance-based coloring (tiles nearer to view center are brighter)
-    const geometry = tessellation.getGeometry()
-    const viewCenter = view ? getViewCenter(view.getTransform()) : [0, 0, 1] as [number, number, number]
-    const nodes = dynamicTilesToNodes(visibleTiles, { hue: 220, viewCenter })
-    const scene = createScene(geometry, nodes)
+    // Use PoincareGeometry so renderer treats coords as [-1, 1] euclidean
+    const nodes = addressedTilesToNodes(visibleTiles, { hue: 220 })
+    const scene = createScene(geometryRef.current, nodes)
     setupParentReferences(scene)
 
     // Update focus manager
@@ -183,12 +167,12 @@ export default function HyperbolicTiling() {
       })
     }
 
-    // Create dynamic tessellation manager
-    tessellationRef.current = new DynamicTessellationManager({
+    // Create tessellation manager (address-based, no coordinate explosion)
+    tessellationRef.current = new Hyperbolic2DTessellation({
       p,
       q,
       maxTiles: 3000,
-      visibleRadius,
+      maxDepth: 50,
     })
 
     // Create interaction geometry and view
@@ -209,21 +193,17 @@ export default function HyperbolicTiling() {
     )
 
     // Update view and redraw on transform change
-    const unsubscribe = controllerRef.current.onTransformChange(
-      transform => {
-        if (viewRef.current) {
-          viewRef.current.setTransform(transform)
-        }
-        draw()
-      },
-    )
+    const unsubscribe = controllerRef.current.onTransformChange(transform => {
+      if (viewRef.current) {
+        viewRef.current.setTransform(transform)
+      }
+      draw()
+    })
 
     // Create initial scene for focus manager
     const initialTiles = tessellationRef.current.getVisibleTiles()
-    const geometry = tessellationRef.current.getGeometry()
-    const initialViewCenter: [number, number, number] = [0, 0, 1]
-    const initialNodes = dynamicTilesToNodes(initialTiles, { hue: 220, viewCenter: initialViewCenter })
-    const initialScene = createScene(geometry, initialNodes)
+    const initialNodes = addressedTilesToNodes(initialTiles, { hue: 220 })
+    const initialScene = createScene(geometryRef.current, initialNodes)
     setupParentReferences(initialScene)
 
     // Create focus manager
@@ -251,10 +231,8 @@ export default function HyperbolicTiling() {
 
       // Build current scene for hit testing
       const visibleTiles = tessellation.getVisibleTiles()
-      const geometry = tessellation.getGeometry()
-      const clickViewCenter = viewRef.current ? getViewCenter(viewRef.current.getTransform()) : [0, 0, 1] as [number, number, number]
-      const nodes = dynamicTilesToNodes(visibleTiles, { hue: 220, viewCenter: clickViewCenter })
-      const scene = createScene(geometry, nodes)
+      const nodes = addressedTilesToNodes(visibleTiles, { hue: 220 })
+      const scene = createScene(geometryRef.current, nodes)
       setupParentReferences(scene)
       focusManager.setScene(scene)
 
@@ -285,7 +263,7 @@ export default function HyperbolicTiling() {
       focusNavRef.current?.dispose()
       canvas.removeEventListener('click', handleClick)
     }
-  }, [p, q, isHyperbolic, error, visibleRadius])
+  }, [p, q, isHyperbolic, error])
 
   // Update renderer config when zoom changes
   useEffect(() => {
@@ -381,19 +359,6 @@ export default function HyperbolicTiling() {
             Reset View
           </button>
           <label className="flex items-center gap-2">
-            <span className="text-gray-400 text-sm">Radius:</span>
-            <input
-              type="range"
-              min="1.5"
-              max="5.0"
-              step="0.1"
-              value={visibleRadius}
-              onChange={e => setVisibleRadius(parseFloat(e.target.value))}
-              className="w-24"
-            />
-            <span className="text-sm w-12">{visibleRadius.toFixed(1)}</span>
-          </label>
-          <label className="flex items-center gap-2">
             <span className="text-gray-400 text-sm">Zoom:</span>
             <input
               type="range"
@@ -404,9 +369,7 @@ export default function HyperbolicTiling() {
               onChange={e => setZoom(parseFloat(e.target.value))}
               className="w-24"
             />
-            <span className="text-sm w-12">
-              {(zoom * 100).toFixed(0)}%
-            </span>
+            <span className="text-sm w-12">{(zoom * 100).toFixed(0)}%</span>
           </label>
         </div>
       </header>

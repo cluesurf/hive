@@ -170,6 +170,11 @@ export class InteractionController {
     })
     window.addEventListener('touchend', this.handleTouchEnd)
 
+    // Wheel events for rotation (two-finger horizontal scroll)
+    this.canvas.addEventListener('wheel', this.handleWheel, {
+      passive: false,
+    })
+
     // Prevent context menu on right-click
     this.canvas.addEventListener('contextmenu', this.handleContextMenu)
   }
@@ -182,6 +187,8 @@ export class InteractionController {
     this.canvas.removeEventListener('touchstart', this.handleTouchStart)
     window.removeEventListener('touchmove', this.handleTouchMove)
     window.removeEventListener('touchend', this.handleTouchEnd)
+
+    this.canvas.removeEventListener('wheel', this.handleWheel)
 
     this.canvas.removeEventListener(
       'contextmenu',
@@ -229,6 +236,49 @@ export class InteractionController {
   private handleTouchEnd = (_e: TouchEvent): void => {
     if (!this.drag.active) return
     this.endDrag()
+  }
+
+  /**
+   * Handle wheel events for rotation.
+   * Horizontal scroll (deltaX) rotates the view around the center.
+   * This works with two-finger trackpad gestures.
+   */
+  private handleWheel = (e: WheelEvent): void => {
+    e.preventDefault()
+
+    // Normalize delta (trackpads use pixels, mouse wheels use lines)
+    const scale = e.deltaMode === 1 ? 16 : 1
+    const deltaX = e.deltaX * scale
+
+    // Use horizontal scroll for rotation
+    // Sensitivity: ~0.002 radians per pixel feels good
+    const rotationSensitivity = 0.002
+    const angle = deltaX * rotationSensitivity
+
+    if (Math.abs(angle) < 0.0001) return
+
+    // Build rotation transform and compose with current view
+    const rotation = this.buildRotation(angle)
+    this.view.transform = this.geometry.composeTransforms(
+      rotation,
+      this.view.transform,
+    )
+
+    this.notifyTransformChange()
+  }
+
+  /**
+   * Build an SU(1,1) rotation matrix for the given angle.
+   * In SU(1,1), rotation by θ around the origin is:
+   *   a = e^(iθ/2) = cos(θ/2) + i*sin(θ/2)
+   *   b = 0
+   */
+  private buildRotation(angle: number): Matrix {
+    const halfAngle = angle / 2
+    const aRe = Math.cos(halfAngle)
+    const aIm = Math.sin(halfAngle)
+    // b = 0, so bRe = bIm = 0
+    return [aRe, aIm, 0, 0, 0, 0, 0, 0, 1]
   }
 
   // =========================================================================

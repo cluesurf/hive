@@ -1,5 +1,5 @@
 /**
- * Address-based hyperbolic tessellation.
+ * Address-based dynamic tessellation manager.
  *
  * Uses discrete tile addresses (group words) instead of floating-point
  * coordinates. This avoids coordinate explosion because:
@@ -21,7 +21,7 @@ import {
 /**
  * Lightweight tile representation - only stores discrete address.
  */
-export interface Tile {
+export interface AddressedTile {
   /** Discrete tile address (group word) */
   id: GroupWord
 
@@ -36,17 +36,9 @@ export interface Tile {
 }
 
 /**
- * Visible tile with computed Poincaré disk vertices.
+ * Configuration for address-based tessellation.
  */
-export interface VisibleTile {
-  id: GroupWord
-  vertices: Array<[number, number]>
-}
-
-/**
- * Configuration for hyperbolic tessellation.
- */
-export interface TessellationConfig {
+export interface AddressBasedConfig {
   /** Polygon type (p sides) */
   p: number
 
@@ -60,26 +52,24 @@ export interface TessellationConfig {
   maxDepth: number
 }
 
-const DEFAULT_CONFIG: TessellationConfig = {
+const DEFAULT_CONFIG: AddressBasedConfig = {
   p: 7,
   q: 3,
   maxTiles: 3000,
   maxDepth: 50,
 }
 
-export { DEFAULT_CONFIG as DEFAULT_TESSELLATION_CONFIG }
-
 /**
- * Hyperbolic tessellation manager using address-based tiles.
+ * Address-based tessellation manager.
  *
  * Tiles are identified by group words, and geometry is computed
  * on-demand at render time. This completely avoids the floating-point
  * coordinate explosion problem.
  */
-export class Hyperbolic2DTessellation {
-  private config: TessellationConfig
+export class AddressBasedTessellation {
+  private config: AddressBasedConfig
   private coords: VonDyckCoordinates
-  private tiles: Map<GroupWord, Tile> = new Map()
+  private tiles: Map<GroupWord, AddressedTile> = new Map()
   private frameCount: number = 0
 
   // View transform (SU(1,1) format)
@@ -88,30 +78,15 @@ export class Hyperbolic2DTessellation {
   // Precomputed base vertices in Poincaré disk
   private baseVertices: Array<[number, number]> = []
 
-  // Cache for tile transforms (SU(1,1) matrices)
-  private transformCache: Map<GroupWord, Matrix> = new Map()
-
-  // Precomputed edge crossing transforms
-  private edgeTransforms: Matrix[] = []
-
-  // Track the current "center tile" - the tile closest to view center
-  // This is used as BFS start when view moves far from origin
-  private centerTile: GroupWord = ''
-  private lastVisibleTiles: Set<GroupWord> = new Set()
-
-  constructor(config: Partial<TessellationConfig> = {}) {
+  constructor(config: Partial<AddressBasedConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
     this.coords = new VonDyckCoordinates(this.config.p, this.config.q)
 
     // Compute base polygon vertices in Poincaré disk
     this.baseVertices = this.computeBaseVertices()
 
-    // Precompute edge crossing transforms
-    this.edgeTransforms = this.computeEdgeTransforms()
-
-    // Create origin tile with identity transform
+    // Create origin tile
     this.getOrCreateTile('')
-    this.transformCache.set('', [1, 0, 0, 0, 0, 0, 0, 0, 1])
   }
 
   /**
@@ -119,218 +94,67 @@ export class Hyperbolic2DTessellation {
    */
   setViewTransform(transform: Matrix): void {
     this.viewTransform = transform
-
-    // Walk from current center tile toward new view center
-    // This keeps centerTile updated as the view moves
-    this.updateCenterTile()
-
-    // Limit cache size
-    if (this.transformCache.size > 10000) {
-      this.transformCache.clear()
-      this.transformCache.set('', [1, 0, 0, 0, 0, 0, 0, 0, 1])
-    }
-  }
-
-  /**
-   * Update centerTile by walking toward the view center.
-   * This is called when the view transform changes.
-   */
-  private updateCenterTile(): void {
-    // Walk from current center toward view center (origin in view space)
-    // We do this iteratively to track the view as it moves
-    let current = this.centerTile
-    const maxSteps = 20 // Limit iterations
-
-    for (let step = 0; step < maxSteps; step++) {
-      // Get current tile's center in view space
-      const transform = this.getTileTransform(current, null, 0)
-      const combined = this.composeSU11(this.viewTransform, transform)
-      const center = this.applySU11Transform(combined, [0, 0])
-      const currentDist = center[0] * center[0] + center[1] * center[1]
-
-      // If we're already at center, done
-      if (currentDist < 0.1) break
-
-      // Check neighbors and move to one closer to view center
-      const neighbors = this.getNeighbors(current)
-      let bestNeighbor = current
-      let bestDist = currentDist
-
-      for (let dir = 0; dir < neighbors.length; dir++) {
-        const neighborId = neighbors[dir]!
-        const nTransform = this.getTileTransform(neighborId, current, dir)
-        const nCombined = this.composeSU11(this.viewTransform, nTransform)
-        const nCenter = this.applySU11Transform(nCombined, [0, 0])
-        const nDist = nCenter[0] * nCenter[0] + nCenter[1] * nCenter[1]
-
-        if (nDist < bestDist) {
-          bestDist = nDist
-          bestNeighbor = neighborId
-        }
-      }
-
-      // No improvement - we're at a local minimum
-      if (bestNeighbor === current) break
-
-      current = bestNeighbor
-    }
-
-    this.centerTile = current
-  }
-
-  /**
-   * Get the view transform.
-   */
-  getViewTransform(): Matrix {
-    return this.viewTransform
   }
 
   /**
    * Get visible tiles and their Poincaré disk vertices.
-   * Uses incremental transform computation for efficiency.
+   * Geometry is computed fresh each call - no accumulated errors.
    */
-  getVisibleTiles(): VisibleTile[] {
+  getVisibleTiles(): Array<{
+    id: GroupWord
+    vertices: Array<[number, number]>
+  }> {
     this.frameCount++
-    const visible: VisibleTile[] = []
-    const visited = new Set<GroupWord>()
-
-    // Start BFS from multiple seeds: centerTile + origin + last visible tiles
-    // This ensures we can find tiles when view moves far from origin
-    const queue: Array<{
+    const visible: Array<{
       id: GroupWord
-      parentId: GroupWord | null
-      edgeDir: number
+      vertices: Array<[number, number]>
     }> = []
-
-    // Start from center tile (most important - closest to view)
-    queue.push({ id: this.centerTile, parentId: null, edgeDir: 0 })
-
-    // Also include origin if different
-    if (this.centerTile !== '') {
-      queue.push({ id: '', parentId: null, edgeDir: 0 })
-    }
-
-    // Also start from previously visible tiles (for continuity when panning)
-    for (const id of this.lastVisibleTiles) {
-      if (id !== '' && id !== this.centerTile) {
-        queue.push({ id, parentId: null, edgeDir: 0 })
-      }
-    }
-
-    let closestTile = ''
-    let closestDist = Infinity
+    const visited = new Set<GroupWord>()
+    const queue: GroupWord[] = ['']
 
     while (queue.length > 0 && visible.length < this.config.maxTiles) {
-      const { id, parentId, edgeDir } = queue.shift()!
-
+      const id = queue.shift()!
       if (visited.has(id)) continue
       visited.add(id)
 
       const tile = this.getOrCreateTile(id)
       if (tile.depth > this.config.maxDepth) continue
 
-      // Get or compute transform incrementally
-      const tileTransform = this.getTileTransform(id, parentId, edgeDir)
+      // Compute vertices in Poincaré disk for this tile
+      const vertices = this.computeTileVertices(id)
 
-      // Apply view transform and check visibility
-      const vertices = this.computeVerticesWithTransform(tileTransform)
-
-      // Compute center for distance check
-      let cx = 0, cy = 0
-      for (const [u, v] of vertices) {
-        cx += u
-        cy += v
-      }
-      cx /= vertices.length
-      cy /= vertices.length
-      const centerDist = cx * cx + cy * cy
-
-      // Track tile closest to view center
-      if (centerDist < closestDist) {
-        closestDist = centerDist
-        closestTile = id
-      }
-
-      // Check visibility: any vertex inside disk radius 1.0
-      const isVisible = vertices.some(([u, v]) => u * u + v * v < 1.0)
+      // Check if any vertex is visible (inside unit disk after transform)
+      const isVisible = vertices.some(([u, v]) => u * u + v * v < 1.1)
 
       if (isVisible) {
         visible.push({ id, vertices })
         tile.lastSeenFrame = this.frameCount
 
-        // Explore neighbors
+        // Explore neighbors of visible tiles
         const neighbors = this.getNeighbors(id)
-        for (let dir = 0; dir < neighbors.length; dir++) {
-          const neighborId = neighbors[dir]!
+        for (const neighborId of neighbors) {
           if (!visited.has(neighborId)) {
-            queue.push({ id: neighborId, parentId: id, edgeDir: dir })
+            queue.push(neighborId)
           }
         }
-      } else if (centerDist < 2.0) {
-        // Explore tiles near view center even if not visible
-        // This helps discover tiles when panning
+      } else if (tile.depth < this.config.maxDepth / 2) {
+        // For non-visible tiles at low depth, still explore
         const neighbors = this.getNeighbors(id)
-        for (let dir = 0; dir < neighbors.length; dir++) {
-          const neighborId = neighbors[dir]!
+        for (const neighborId of neighbors) {
           if (!visited.has(neighborId)) {
-            queue.push({ id: neighborId, parentId: id, edgeDir: dir })
+            queue.push(neighborId)
           }
         }
       }
     }
 
-    // Update tracking for next frame
-    this.centerTile = closestTile
-    this.lastVisibleTiles = new Set(visible.map(t => t.id))
-
     return visible
-  }
-
-  /**
-   * Get cached transform or compute incrementally from parent.
-   */
-  private getTileTransform(
-    id: GroupWord,
-    parentId: GroupWord | null,
-    edgeDir: number,
-  ): Matrix {
-    // Check cache first
-    let transform = this.transformCache.get(id)
-    if (transform) return transform
-
-    if (id === '') {
-      // Origin is identity
-      transform = [1, 0, 0, 0, 0, 0, 0, 0, 1]
-    } else if (parentId !== null && this.transformCache.has(parentId)) {
-      // Compute incrementally from parent
-      const parentTransform = this.transformCache.get(parentId)!
-      const edgeTransform = this.edgeTransforms[edgeDir]!
-      transform = this.composeSU11(edgeTransform, parentTransform)
-    } else {
-      // Fallback: compute from scratch (slow path)
-      transform = this.computeTileTransformSU11(id)
-    }
-
-    this.transformCache.set(id, transform)
-    return transform
-  }
-
-  /**
-   * Compute vertices using a precomputed tile transform.
-   */
-  private computeVerticesWithTransform(
-    tileTransform: Matrix,
-  ): Array<[number, number]> {
-    // Compose tile transform with view transform once
-    const combined = this.composeSU11(this.viewTransform, tileTransform)
-
-    return this.baseVertices.map(v => this.applySU11Transform(combined, v))
   }
 
   /**
    * Get or create a tile by its address.
    */
-  private getOrCreateTile(id: GroupWord): Tile {
+  private getOrCreateTile(id: GroupWord): AddressedTile {
     let tile = this.tiles.get(id)
     if (!tile) {
       tile = {
@@ -383,47 +207,6 @@ export class Hyperbolic2DTessellation {
   }
 
   /**
-   * Precompute the SU(1,1) transforms for crossing each edge.
-   * These are used for incremental transform computation.
-   */
-  private computeEdgeTransforms(): Matrix[] {
-    const transforms: Matrix[] = []
-    const { p } = this.config
-
-    for (let dir = 0; dir < p; dir++) {
-      // Edge crossing = rotate to edge, apply b generator, rotate back
-      // This is: a^dir * b * a^(-dir)
-      const rotToEdge = this.getRotationTransform(dir)
-      const bTransform = this.getGeneratorTransform('b', false)
-      const rotBack = this.getRotationTransform(-dir)
-
-      const temp = this.composeSU11(bTransform, rotToEdge)
-      transforms.push(this.composeSU11(rotBack, temp))
-    }
-
-    return transforms
-  }
-
-  /**
-   * Get a pure rotation transform (a^power).
-   */
-  private getRotationTransform(power: number): Matrix {
-    const angle = (power * 2 * Math.PI) / this.config.p
-    const halfAngle = angle / 2
-    return [
-      Math.cos(halfAngle),
-      Math.sin(halfAngle),
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      1,
-    ]
-  }
-
-  /**
    * Compute vertices of a tile in Poincaré disk, with view transform applied.
    *
    * This is computed fresh each time from the discrete tile address,
@@ -467,7 +250,10 @@ export class Hyperbolic2DTessellation {
       const isInverse = gen.power < 0
 
       for (let i = 0; i < count; i++) {
-        const genTransform = this.getGeneratorTransform(gen.symbol, isInverse)
+        const genTransform = this.getGeneratorTransform(
+          gen.symbol,
+          isInverse,
+        )
         transform = this.composeSU11(genTransform, transform)
       }
     }
@@ -481,7 +267,10 @@ export class Hyperbolic2DTessellation {
    * Generator 'a' = rotation by 2π/p around origin
    * Generator 'b' = rotation by 2π/q around a vertex
    */
-  private getGeneratorTransform(symbol: 'a' | 'b', inverse: boolean): Matrix {
+  private getGeneratorTransform(
+    symbol: 'a' | 'b',
+    inverse: boolean,
+  ): Matrix {
     if (symbol === 'a') {
       // Rotation around origin: simple SU(1,1) rotation
       const angle = ((inverse ? -1 : 1) * (2 * Math.PI)) / this.config.p
@@ -544,7 +333,10 @@ export class Hyperbolic2DTessellation {
       ]
 
       // Compose: fromVertex * rotation * toVertex
-      return this.composeSU11(fromVertex, this.composeSU11(rotation, toVertex))
+      return this.composeSU11(
+        fromVertex,
+        this.composeSU11(rotation, toVertex),
+      )
     }
   }
 
@@ -584,7 +376,9 @@ export class Hyperbolic2DTessellation {
   /**
    * Apply the view transform to a point.
    */
-  private applyViewTransform(point: [number, number]): [number, number] {
+  private applyViewTransform(
+    point: [number, number],
+  ): [number, number] {
     return this.applySU11Transform(this.viewTransform, point)
   }
 
@@ -677,21 +471,7 @@ export class Hyperbolic2DTessellation {
   /**
    * Get config.
    */
-  getConfig(): TessellationConfig {
+  getConfig(): AddressBasedConfig {
     return this.config
-  }
-
-  /**
-   * Get p (polygon sides).
-   */
-  getP(): number {
-    return this.config.p
-  }
-
-  /**
-   * Get q (vertex valence).
-   */
-  getQ(): number {
-    return this.config.q
   }
 }

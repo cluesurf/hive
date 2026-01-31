@@ -22,6 +22,10 @@ export class DynamicTessellationManager {
   private edgeLength: number
   private circumradius: number
 
+  // Re-anchoring threshold: when t-coordinate exceeds this, reset tessellation
+  // t grows as cosh(d) where d is hyperbolic distance, so t=100 means d≈5.3
+  private readonly MAX_T_COORD = 100
+
   constructor(config: Partial<DynamicTessellationConfig> = {}) {
     this.config = { ...DEFAULT_DYNAMIC_CONFIG, ...config }
     this.geometry = new Hyperbolic2D()
@@ -230,23 +234,22 @@ export class DynamicTessellationManager {
   }
 
   /**
-   * Get all tiles visible from the current view center.
-   * Generates tiles until they fill the visible disk area.
+   * Get all tiles visible from the current view.
+   *
+   * Uses Poincaré disk visibility checks which are numerically stable
+   * (all coords bounded in [-1, 1]). Expands from origin via BFS,
+   * using the SU(1,1) transform to determine visibility.
    */
   getVisibleTiles(): Tile[] {
     const visible: Tile[] = []
     const visited = new Set<string>()
 
-    // Find a starting tile near the view center
-    // This is crucial when the view has moved far from the origin
-    const startTile = this.findTileNearPoint(this.viewCenter)
+    // Always start from origin - the SU(1,1) transform handles view position
+    // This avoids walking to huge hyperboloid coordinates
+    const queue: Tile[] = [this.origin]
 
-    // BFS from the starting tile, expanding outward
-    const queue: Tile[] = [startTile]
-
-    // Maximum hyperbolic distance to explore (larger than visible radius
-    // to ensure we reach tiles that might be visible after transform)
-    const maxExploreDistance = this.config.visibleRadius + 2.0
+    // Use depth limit instead of distance (avoids hyperboloid coord issues)
+    const maxDepth = Math.min(50, this.config.maxTiles / 10)
 
     while (queue.length > 0 && visited.size < this.config.maxTiles * 2) {
       const tile = queue.shift()!
@@ -254,29 +257,37 @@ export class DynamicTessellationManager {
       if (visited.has(tile.id)) continue
       visited.add(tile.id)
 
-      // Check distance from view center for exploration limit
-      const dist = this.hyperbolicDistance(this.viewCenter, tile.center)
+      // Stop exploring if too deep (prevents exponential expansion)
+      if (tile.depth > maxDepth) continue
 
-      // Stop exploring if too far from view center
-      if (dist > maxExploreDistance) continue
+      // Check if tile is visible using Poincaré disk visibility
+      // This applies the SU(1,1) transform which is numerically stable
+      const hasVisibleVertex = this.hasVertexInDisk(tile, 1.05)
 
-      // Check if tile is actually visible on screen
-      const isCenterNear = dist <= this.config.visibleRadius
-      const hasVisibleVertex = this.hasVertexInDisk(tile, 1.1)
-
-      if (isCenterNear || hasVisibleVertex) {
+      if (hasVisibleVertex) {
         visible.push(tile)
         tile.lastAccessTime = Date.now()
 
         // Stop collecting visible tiles if we have enough
         if (visible.length >= this.config.maxTiles) break
-      }
 
-      // Always explore neighbors (within exploration distance)
-      for (let i = 0; i < tile.type; i++) {
-        const neighbor = this.getNeighbor(tile, i)
-        if (!visited.has(neighbor.id)) {
-          queue.push(neighbor)
+        // Only explore neighbors of visible tiles (adaptive expansion)
+        for (let i = 0; i < tile.type; i++) {
+          const neighbor = this.getNeighbor(tile, i)
+          if (!visited.has(neighbor.id)) {
+            queue.push(neighbor)
+          }
+        }
+      } else {
+        // For non-visible tiles at low depth, still explore neighbors
+        // This helps find visible tiles that aren't directly connected to origin
+        if (tile.depth < maxDepth / 2) {
+          for (let i = 0; i < tile.type; i++) {
+            const neighbor = this.getNeighbor(tile, i)
+            if (!visited.has(neighbor.id)) {
+              queue.push(neighbor)
+            }
+          }
         }
       }
     }
@@ -323,14 +334,37 @@ export class DynamicTessellationManager {
   /**
    * Check if any vertex of a tile projects inside the Poincare disk
    * after applying the view transform.
+   *
+   * Uses Möbius transform (SU(1,1) format) for the view.
    */
   private hasVertexInDisk(tile: Tile, diskRadius: number): boolean {
+    // Extract SU(1,1) parameters from view transform
+    const aRe = this.viewTransform[0] ?? 1
+    const aIm = this.viewTransform[1] ?? 0
+    const bRe = this.viewTransform[2] ?? 0
+    const bIm = this.viewTransform[3] ?? 0
+
     for (const v of tile.vertices) {
-      // Apply view transform to vertex
-      const transformed = this.geometry.applyMatrix(this.viewTransform, v)
-      const normalized = this.geometry.normalize(transformed)
-      const [u, vCoord] = this.hyperboloidToPoincare(normalized)
-      const r = Math.sqrt(u * u + vCoord * vCoord)
+      // Project vertex to Poincaré disk
+      const [u, vCoord] = this.hyperboloidToPoincare(v)
+
+      // Apply Möbius transform: f(z) = (a*z + b) / (conj(b)*z + conj(a))
+      // Numerator: a*z + b
+      const numRe = (aRe * u - aIm * vCoord) + bRe
+      const numIm = (aRe * vCoord + aIm * u) + bIm
+
+      // Denominator: conj(b)*z + conj(a)
+      const denRe = (bRe * u + bIm * vCoord) + aRe
+      const denIm = (bRe * vCoord - bIm * u) - aIm
+
+      // Complex division
+      const denMagSq = denRe * denRe + denIm * denIm
+      if (denMagSq < 1e-12) continue
+
+      const resultU = (numRe * denRe + numIm * denIm) / denMagSq
+      const resultV = (numIm * denRe - numRe * denIm) / denMagSq
+
+      const r = Math.sqrt(resultU * resultU + resultV * resultV)
       if (r < diskRadius) {
         return true
       }
@@ -378,22 +412,83 @@ export class DynamicTessellationManager {
   }
 
   /**
-   * Set view center from a transform matrix.
-   * The view center is the point in original space that appears at the screen center.
-   * For a Lorentz transform T, this is T^(-1) * origin.
-   * For Lorentz transforms: T^(-1) = η * T^T * η, where η = diag(1,1,-1).
-   * This simplifies to: viewCenter = (-T[6], -T[7], T[8]) for origin input.
+   * Set view center from an SU(1,1) transform matrix.
+   *
+   * The transform is stored as [a_re, a_im, b_re, b_im, 0, 0, 0, 0, 1]
+   * representing the Möbius transformation:
+   *   f(z) = (a*z + b) / (conj(b)*z + conj(a))
+   *
+   * The world point that appears at screen center is: z_center = -b/a
+   * This is then converted to hyperboloid coordinates for tile generation.
+   *
+   * If the view has moved too far from the tessellation origin, the
+   * tessellation is reset to avoid coordinate explosion.
    */
   setViewTransform(transform: Matrix): void {
     this.viewTransform = transform
 
-    // Extract the inverse transform applied to origin
-    // For Lorentz transform, the point that maps to origin is:
-    // P = (-sinh*ux, -sinh*uy, cosh) = (-T[6], -T[7], T[8])
-    const t6 = transform[6] ?? 0
-    const t7 = transform[7] ?? 0
-    const t8 = transform[8] ?? 1
-    this.viewCenter = this.geometry.normalize([-t6, -t7, t8])
+    // Extract SU(1,1) parameters
+    const aRe = transform[0] ?? 1
+    const aIm = transform[1] ?? 0
+    const bRe = transform[2] ?? 0
+    const bIm = transform[3] ?? 0
+
+    // Compute view center in Poincaré disk: z_center = -b/a
+    // -b/a = -(b * conj(a)) / |a|²
+    const aMagSq = aRe * aRe + aIm * aIm
+    if (aMagSq < 1e-12) {
+      this.viewCenter = [0, 0, 1]
+      return
+    }
+
+    // -b * conj(a) = -(bRe + bIm*i)(aRe - aIm*i)
+    // = -(bRe*aRe + bIm*aIm) + (bRe*aIm - bIm*aRe)*i
+    let centerU = -(bRe * aRe + bIm * aIm) / aMagSq
+    let centerV = (bRe * aIm - bIm * aRe) / aMagSq
+
+    // Clamp to valid Poincaré disk
+    const r2 = centerU * centerU + centerV * centerV
+    if (r2 >= 0.9999) {
+      const scale = 0.999 / Math.sqrt(r2)
+      centerU *= scale
+      centerV *= scale
+    }
+
+    // Convert Poincaré disk → Hyperboloid
+    // x = 2u / (1 - r²), y = 2v / (1 - r²), t = (1 + r²) / (1 - r²)
+    const r2Clamped = centerU * centerU + centerV * centerV
+    const denom = 1 - r2Clamped
+    this.viewCenter = [
+      (2 * centerU) / denom,
+      (2 * centerV) / denom,
+      (1 + r2Clamped) / denom,
+    ]
+
+    // Check if we need to re-anchor the tessellation
+    // When the view center's t-coordinate gets too large, hyperboloid coords
+    // will explode and cause precision issues. Reset the tessellation in this case.
+    const viewT = this.viewCenter[2] ?? 1
+    if (viewT > this.MAX_T_COORD) {
+      this.reanchorTessellation()
+    }
+  }
+
+  /**
+   * Reset the tessellation when view has moved too far from origin.
+   * This clears all tiles and creates a fresh tessellation at the origin.
+   * The SU(1,1) view transform handles moving the view, so we just need
+   * tiles near the transformed origin.
+   */
+  private reanchorTessellation(): void {
+    // Clear all tiles
+    this.tiles.clear()
+
+    // Create fresh origin tile
+    this.origin = this.createOriginTile()
+    this.tiles.set(this.origin.id, this.origin)
+
+    // Reset view center to origin (the transform will handle the actual view position)
+    this.viewCenter = [0, 0, 1]
   }
 
   /**

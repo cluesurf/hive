@@ -75,22 +75,45 @@ export class Hyperbolic2D extends Geometry {
 
   normalize(p: Point, out?: Point): Point {
     // Project onto hyperboloid: x² + y² - t² = -1
-    const dot = this.minkowskiDot(p, p)
-    const scale = 1 / Math.sqrt(Math.abs(dot))
-    const t = p[2] ?? 1
-    const sign = t >= 0 ? 1 : -1
+    // Equivalently: t² - x² - y² = 1
+    // For valid points, m = t² - x² - y² should be near 1
+    const px = p[0] ?? 0
+    const py = p[1] ?? 0
+    const pt = p[2] ?? 1
 
-    const x = sign * scale * (p[0] ?? 0)
-    const y = sign * scale * (p[1] ?? 0)
-    const z = sign * scale * (p[2] ?? 1)
+    // Compute m = t² - x² - y² (should be +1 for valid hyperboloid points)
+    const m = pt * pt - px * px - py * py
+
+    // If m > 0, we can rescale to project back to hyperboloid
+    // If m <= 0, the point has drifted too far - use safe fallback
+    if (m > 1e-10) {
+      const scale = 1 / Math.sqrt(m)
+      const sign = pt >= 0 ? 1 : -1
+
+      const x = sign * scale * px
+      const y = sign * scale * py
+      const z = sign * scale * pt
+
+      if (out) {
+        out[0] = x
+        out[1] = y
+        out[2] = z
+        return out
+      }
+      return [x, y, z]
+    }
+
+    // Fallback: keep x, y and recompute t to satisfy t² = 1 + x² + y²
+    // This is the safest projection when the point has drifted
+    const newT = Math.sqrt(1 + px * px + py * py)
 
     if (out) {
-      out[0] = x
-      out[1] = y
-      out[2] = z
+      out[0] = px
+      out[1] = py
+      out[2] = newT
       return out
     }
-    return [x, y, z]
+    return [px, py, newT]
   }
 
   rotation(angle: number, _axis?: number, out?: Matrix): Matrix {
@@ -158,50 +181,56 @@ export class Hyperbolic2D extends Geometry {
 
   reflection(normal: Point, out?: Matrix): Matrix {
     // Reflection across geodesic with given normal (in Minkowski space)
+    // The normal should be spacelike: ⟨n,n⟩_M > 0
     const x = normal[0] ?? 0
     const y = normal[1] ?? 0
     const t = normal[2] ?? 0
 
-    // Minkowski norm squared of the normal
+    // Minkowski norm squared of the normal: ⟨n,n⟩_M = n.x² + n.y² - n.t²
+    // For a valid geodesic normal, this should be positive (spacelike)
     const dot = x * x + y * y - t * t
 
-    if (Math.abs(dot) < 1e-10) {
+    if (dot < 1e-10) {
+      // Normal is not spacelike (lightlike or timelike), cannot reflect
+      // This indicates an error in the geodesic normal computation
       if (out) {
         return this.setIdentity3(out)
       }
       return identity(3)
     }
 
-    // Minkowski space reflection: R(v) = v - 2 * <v,n>_M / <n,n>_M * n
-    // where <a,b>_M = a.x*b.x + a.y*b.y - a.t*b.t
+    // Minkowski space reflection: R(v) = v - 2 * ⟨v,n⟩_M / ⟨n,n⟩_M * n
+    // where ⟨a,b⟩_M = a.x*b.x + a.y*b.y - a.t*b.t
     //
-    // Key: <e_x, n>_M = n.x, <e_y, n>_M = n.y, <e_t, n>_M = -n.t
+    // Key: ⟨e_x, n⟩_M = n.x, ⟨e_y, n⟩_M = n.y, ⟨e_t, n⟩_M = -n.t
     //
-    // R(e_x) = e_x - (2*n.x/dot)*n = [1 - 2x²/dot, -2xy/dot, -2xt/dot]
-    // R(e_y) = e_y - (2*n.y/dot)*n = [-2xy/dot, 1 - 2y²/dot, -2yt/dot]
-    // R(e_t) = e_t - (2*(-n.t)/dot)*n = [2xt/dot, 2yt/dot, 1 + 2t²/dot]
+    // R(e_x) = e_x - (2*n.x/dot)*n = (1 - 2x²/dot, -2xy/dot, -2xt/dot)
+    // R(e_y) = e_y - (2*n.y/dot)*n = (-2xy/dot, 1 - 2y²/dot, -2yt/dot)
+    // R(e_t) = e_t + (2*n.t/dot)*n = (2xt/dot, 2yt/dot, 1 + 2t²/dot)
+    //
+    // Matrix in row-major order: row i contains [R(e_x)[i], R(e_y)[i], R(e_t)[i]]
     if (out) {
-      out[0] = 1 - (2 * x * x) / dot
-      out[1] = (-2 * x * y) / dot
-      out[2] = (-2 * x * t) / dot
-      out[3] = (-2 * x * y) / dot
-      out[4] = 1 - (2 * y * y) / dot
-      out[5] = (-2 * y * t) / dot
-      out[6] = (2 * x * t) / dot
-      out[7] = (2 * y * t) / dot
-      out[8] = 1 + (2 * t * t) / dot
+      out[0] = 1 - (2 * x * x) / dot  // R(e_x).x
+      out[1] = (-2 * x * y) / dot     // R(e_y).x
+      out[2] = (2 * x * t) / dot      // R(e_t).x
+      out[3] = (-2 * x * y) / dot     // R(e_x).y
+      out[4] = 1 - (2 * y * y) / dot  // R(e_y).y
+      out[5] = (2 * y * t) / dot      // R(e_t).y
+      out[6] = (-2 * x * t) / dot     // R(e_x).t
+      out[7] = (-2 * y * t) / dot     // R(e_y).t
+      out[8] = 1 + (2 * t * t) / dot  // R(e_t).t
       return out
     }
     return [
-      1 - (2 * x * x) / dot,
-      (-2 * x * y) / dot,
-      (-2 * x * t) / dot,
-      (-2 * x * y) / dot,
-      1 - (2 * y * y) / dot,
-      (-2 * y * t) / dot,
-      (2 * x * t) / dot,
-      (2 * y * t) / dot,
-      1 + (2 * t * t) / dot,
+      1 - (2 * x * x) / dot,  // R(e_x).x
+      (-2 * x * y) / dot,     // R(e_y).x
+      (2 * x * t) / dot,      // R(e_t).x
+      (-2 * x * y) / dot,     // R(e_x).y
+      1 - (2 * y * y) / dot,  // R(e_y).y
+      (2 * y * t) / dot,      // R(e_t).y
+      (-2 * x * t) / dot,     // R(e_x).t
+      (-2 * y * t) / dot,     // R(e_y).t
+      1 + (2 * t * t) / dot,  // R(e_t).t
     ]
   }
 
@@ -238,8 +267,16 @@ export class Hyperbolic2D extends Geometry {
   }
 
   geodesicThrough(a: Point, b: Point, out?: Point): Point {
-    // The geodesic is the intersection of the hyperboloid with a plane through origin
-    // The normal to this plane is a × b (Minkowski cross product)
+    // The geodesic is the intersection of the hyperboloid with a plane through origin.
+    // We need a normal n that is Minkowski-orthogonal to both a and b:
+    //   ⟨n, a⟩_M = n.x*a.x + n.y*a.y - n.t*a.t = 0
+    //   ⟨n, b⟩_M = n.x*b.x + n.y*b.y - n.t*b.t = 0
+    //
+    // This is equivalent to the Euclidean cross product of:
+    //   a' = (a.x, a.y, -a.t)
+    //   b' = (b.x, b.y, -b.t)
+    //
+    // n = a' × b' gives us a spacelike vector (⟨n,n⟩_M > 0) when a,b are on hyperboloid
     const ax = a[0] ?? 0
     const ay = a[1] ?? 0
     const at = a[2] ?? 1
@@ -247,9 +284,12 @@ export class Hyperbolic2D extends Geometry {
     const by = b[1] ?? 0
     const bt = b[2] ?? 1
 
-    // Minkowski cross product (with sign flip for t component)
-    const x = ay * bt - at * by
-    const y = at * bx - ax * bt
+    // Cross product of (ax, ay, -at) × (bx, by, -bt):
+    // x = ay*(-bt) - (-at)*by = -ay*bt + at*by = at*by - ay*bt
+    // y = (-at)*bx - ax*(-bt) = -at*bx + ax*bt = ax*bt - at*bx
+    // z = ax*by - ay*bx
+    const x = at * by - ay * bt
+    const y = ax * bt - at * bx
     const z = ax * by - ay * bx
 
     if (out) {
