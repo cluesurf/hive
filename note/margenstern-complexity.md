@@ -1,4 +1,4 @@
-# Complexity Results for Hyperbolic Cellular Automata
+# Margenstern: Complexity Theory in Hyperbolic Space
 
 Chapter 3 of Margenstern Volume 2 presents groundbreaking complexity
 theory results for cellular automata in hyperbolic spaces.
@@ -100,60 +100,6 @@ Euclidean:
 This is because the exponential growth of hyperbolic space provides
 "free" parallelism that eliminates the gap between these classes.
 
-## Technical Details
-
-### Working Area Construction
-
-Uses Fibonacci tree structure:
-
-- Level k has F\_{2k+1} nodes
-- Levels can be extended dynamically
-- Each level corresponds to a variable
-
-### Rule Format
-
-Cellular automaton rules adapted for pentagrid:
-
-- 5 neighbors (edges 1-5)
-- Edge 1 always points to father
-- Rotation-invariant when possible
-
-### State Space
-
-Multiple state types needed:
-
-- Quiescent state
-- Signal states (S, proceed, etc.)
-- Evaluation states (true, false, partial)
-- Level markers
-
-## Pseudocode
-
-```typescript
-function solveSAT(n: number, clauses: Clause[]): boolean {
-  // Phase 1: Create working area
-  for (let level = 0; level < n; level++) {
-    // Spread to next level of Fibonacci tree
-    extendLevel()
-  }
-  // Initialize leaves with true
-  initializeLeaves()
-
-  // Phase 2: Evaluate each clause
-  for (const clause of clauses) {
-    evaluateClause(clause)
-    // Results AND'd at leaves
-  }
-
-  // Phase 3: Collect
-  return orAllLeaves()
-}
-```
-
-The cellular automaton implements this with massive parallelism, the key
-difference being all operations happen simultaneously across all 2^n
-branches.
-
 ## Ph = PSPACE Theorem
 
 **Theorem 5 (Iwamoto, Margenstern, Morita, Worsch)**: For any
@@ -169,9 +115,10 @@ has a successful computation on w in time O(P(|w|)^2).
 
 The proof uses Savitch's theorem: NPSPACE = PSPACE.
 
-Key idea: Construct a binary tree B representing all possible computations
-of a non-deterministic Turing machine. The hyperbolic CA can construct
-this tree in polynomial time due to exponential space availability.
+Key idea: Construct a binary tree B representing all possible
+computations of a non-deterministic Turing machine. The hyperbolic CA
+can construct this tree in polynomial time due to exponential space
+availability.
 
 ### Concepts Used
 
@@ -212,8 +159,8 @@ The complexity classes form an infinite hierarchy within Ph.
 ## Finer Hierarchy
 
 **Theorem 10 (Iwamoto, Margenstern)**: For any rational r > 1 and
-epsilon > 0, there is a language acceptable in time n^(r+epsilon) but not
-in time n^r.
+epsilon > 0, there is a language acceptable in time n^(r+epsilon) but
+not in time n^r.
 
 Uses padding technique and Lemma 3 about complexity class preservation.
 
@@ -235,6 +182,7 @@ contained in EXPh
 
 **Theorem 12**: A non-deterministic CA bounded by time t(n) can be
 simulated by:
+
 - 4*log_beta(t(n))-level bounded deterministic CA
 - 2*log_beta(t(n))-level bounded non-deterministic CA
 
@@ -255,3 +203,62 @@ EXPh = NEXPh = EXPSPACEh = NEXPSPACEh
 
 The exponential classes also collapse, but there is strict separation
 between polynomial and exponential classes.
+
+## Key Theorems Summary
+
+| Theorem               | Statement                                  |
+| --------------------- | ------------------------------------------ |
+| Ph = NPh = PSPACE     | Complexity classes collapse in hyperbolic  |
+| SAT in O(n)           | 3-SAT solvable in linear time (unary)      |
+| Tiling undecidable    | Domino problem is undecidable              |
+| Beyond Turing         | Infinigrid can decide Σ^0_n formulas       |
+
+## Technical Details
+
+### Working Area Construction
+
+Uses Fibonacci tree structure:
+
+- Level k has F_{2k+1} nodes
+- Levels can be extended dynamically
+- Each level corresponds to a variable
+
+### Rule Format
+
+Cellular automaton rules adapted for pentagrid:
+
+- 5 neighbors (edges 1-5)
+- Edge 1 always points to father
+- Rotation-invariant when possible
+
+### State Space
+
+Multiple state types needed:
+
+- Quiescent state
+- Signal states (S, proceed, etc.)
+- Evaluation states (true, false, partial)
+- Level markers
+
+## Pseudocode
+
+```typescript
+function solveSAT(n: number, clauses: Clause[]): boolean {
+  // Phase 1: Create working area
+  for (let level = 0; level < n; level++) {
+    extendLevel()
+  }
+  initializeLeaves()
+
+  // Phase 2: Evaluate each clause
+  for (const clause of clauses) {
+    evaluateClause(clause)
+  }
+
+  // Phase 3: Collect
+  return orAllLeaves()
+}
+```
+
+The cellular automaton implements this with massive parallelism. All
+operations happen simultaneously across all 2^n branches.

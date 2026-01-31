@@ -1,7 +1,6 @@
-# Dodecagrid {5,3,4}: 3D Hyperbolic Tessellation
+# Margenstern: 3D Hyperbolic Tessellations
 
-The dodecagrid is the 3D hyperbolic analog of the pentagrid. This is the
-primary 3D tiling covered in Margenstern Volume 2.
+The dodecagrid {5,3,4} is the 3D hyperbolic analog of the pentagrid.
 
 ## Schlafli Symbol
 
@@ -225,7 +224,6 @@ const M: number[][] = [
 
 function nodeType(coord: DodecagridCoord): NodeType {
   // Compute type by traversing path with matrix
-  // ...
 }
 
 function father(coord: DodecagridCoord): DodecagridCoord | null {
@@ -236,13 +234,11 @@ function father(coord: DodecagridCoord): DodecagridCoord | null {
 function sons(coord: DodecagridCoord): DodecagridCoord[] {
   // Return white sub-faces (tree children)
   // Number depends on node type
-  // ...
 }
 
 function nephews(coord: DodecagridCoord): DodecagridCoord[] {
   // Return neighbors via uncle/nephew relations
   // Number depends on node type
-  // ...
 }
 
 function neighbors12(coord: DodecagridCoord): DodecagridCoord[] {
@@ -252,6 +248,17 @@ function neighbors12(coord: DodecagridCoord): DodecagridCoord[] {
   return f ? [f, ...s, ...n] : [...s, ...n]
 }
 ```
+
+## 120-Cell in IH4
+
+The 120-cell consists of 120 regular rectangular dodecahedra with:
+
+- 2D faces: regular rectangular pentagons
+- 3D faces: regular rectangular dodecahedra
+- Each edge shared by three dodecahedra
+- Each vertex shared by four dodecahedra
+
+Constructed through 7 layers/8 generations using orthogonal completion.
 
 ## References
 

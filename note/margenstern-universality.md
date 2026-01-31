@@ -1,11 +1,8 @@
-# Universality in Hyperbolic Cellular Automata
+# Margenstern: Universality and the Tiling Problem
 
-Chapter 4 of Margenstern Volume 2 covers universality results for
-cellular automata in hyperbolic spaces.
+## Intrinsic Universality
 
-## Main Results
-
-### Theorem 1: Intrinsic Universality
+### Theorem 1
 
 There exists a cellular automaton U on the pentagrid that can simulate
 any other cellular automaton A on the pentagrid, starting from an
@@ -147,7 +144,7 @@ The construction extends to:
 
 The key is that localization techniques work in all these tilings.
 
-## Railway Circuits (Intermezzo)
+## Railway Circuits
 
 An alternative model for proving weak universality.
 
@@ -184,3 +181,64 @@ The switches and crossings can be implemented using:
 
 Railway circuit constructions typically prove weak universality. Strong
 universality requires additional self-replication mechanisms.
+
+## The Tiling Problem
+
+### Statement
+
+Given a finite set of tiles with edge-matching constraints, can they
+tile the entire hyperbolic plane?
+
+### Undecidability (Theorem)
+
+The tiling problem is undecidable for the hyperbolic plane.
+
+This was proven by reducing the halting problem for cellular automata
+to the tiling problem.
+
+### Mantilla Structure
+
+A tiling with heptagons and hexagons that:
+
+- Tessellates the hyperbolic plane
+- Creates a hierarchical structure for encoding computations
+- Used in the undecidability proof
+
+### Implications
+
+- No algorithm can decide if an arbitrary tile set tiles the hyperbolic
+  plane
+- The hyperbolic plane has the same computational complexity as the
+  Euclidean plane for this problem
+- Connects hyperbolic geometry to fundamental limits of computation
+
+## Beyond Turing
+
+### Infinigrid Model
+
+Using an infinite initial configuration, hyperbolic CAs can compute
+beyond standard Turing machines.
+
+**Theorem**: The infinigrid can decide Σ^0_n formulas for any n.
+
+This uses the infinite hyperbolic structure to encode and process
+arbitrarily complex logical formulas.
+
+### Hypercomputation
+
+While not physically realizable, this shows that:
+
+- Hyperbolic geometry provides a natural framework for studying
+  hypercomputation
+- The infinite structure of hyperbolic space enables capabilities
+  beyond finite Turing machines
+
+## Summary
+
+| Concept             | Key Result                                    |
+| ------------------- | --------------------------------------------- |
+| Intrinsic universal | CA exists that simulates any other CA         |
+| Scaled trees        | Mechanism for uniform simulation              |
+| Railway circuits    | Alternative universality proof                |
+| Tiling undecidable  | No algorithm for general tile matching        |
+| Beyond Turing       | Infinite configurations enable hypercomputing |
