@@ -60,6 +60,16 @@ This is phase 1 of the vibe coding UI, 2D demo. _(Test with
 - Check the [`./code`](https://github.com/cluesurf/hive/tree/make/code)
   folder for where we put all the library code.
 
+## Development
+
+```
+# manually inspect rendering and such
+pnpm test:site
+
+# run library tests
+pnpm test
+```
+
 ## Inspiration
 
 - [hyperbolic tessellations/honeycombs codebases](https://github.com/lancejpollard?submit=Search&q=hyperbolic&tab=stars&type=&sort=&direction=&submit=Search)
