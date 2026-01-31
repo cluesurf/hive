@@ -1,0 +1,26 @@
+{
+  "name": "@cluesurf/comb",
+  "version": "0.0.2",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "make": "rm -rf host && mkdir -p host && pnpm exec tsc --project tsconfig.json --pretty --noEmitOnError false && pnpm exec tsc-alias --project tsconfig.json && cp package.json host",
+    "scan": "rm -rf host && concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
+    "lint": "eslint --ext .ts ./make --fix",
+    "test:make": "npx tsx test/make.ts",
+    "test": "npx tsx --no-warnings=ExperimentalWarning test/index.ts",
+    "host": "pnpm make && npm publish --access=public"
+  },
+  "prettier": "@cluesurf/wash/flow.json",
+  "devDependencies": {
+    "@cluesurf/wash": "^0.6.0",
+    "@types/lodash": "^4.14.194",
+    "@types/node": "^22.15.3",
+    "concurrently": "^7.6.0",
+    "eslint": "^9.26.0",
+    "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.15",
+    "tsx": "^3.12.7",
+    "typescript": "^5.8.3"
+  }
+}
