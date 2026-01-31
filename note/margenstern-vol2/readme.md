@@ -1,28 +1,28 @@
 # Margenstern Volume 2 Notes
 
-Notes from "Cellular Automata in Hyperbolic Spaces Volume 2" by
-Maurice Margenstern.
+Notes from "Cellular Automata in Hyperbolic Spaces Volume 2" by Maurice
+Margenstern.
 
 ## Files
 
 ### Theory Notes
 
-| File                    | Topic                                         |
-| ----------------------- | --------------------------------------------- |
-| coordinate-system.md    | Core implementable coordinate model           |
-| fibonacci-tree.md       | Fibonacci tree structure and operations       |
-| shortest-paths.md       | Path algorithms and distance computation      |
-| complexity-results.md   | P=NP results, SAT solving, PSPACE             |
-| applications.md         | Practical applications (keyboards, IP, etc.)  |
-| chapter-notes.md        | Detailed chapter-by-chapter reading notes     |
+| File                  | Topic                                        |
+| --------------------- | -------------------------------------------- |
+| coordinate-system.md  | Core implementable coordinate model          |
+| fibonacci-tree.md     | Fibonacci tree structure and operations      |
+| shortest-paths.md     | Path algorithms and distance computation     |
+| complexity-results.md | P=NP results, SAT solving, PSPACE            |
+| applications.md       | Practical applications (keyboards, IP, etc.) |
+| chapter-notes.md      | Detailed chapter-by-chapter reading notes    |
 
 ### Implementation Code
 
-| File                           | Topic                                    |
-| ------------------------------ | ---------------------------------------- |
-| heptagrid-7-3-rules.md         | {7,3} ternary heptagrid rule set         |
-| heptagrid-7-3-implementation.md| {7,3} complete TypeScript implementation |
-| pentagrid-5-4-implementation.md| {5,4} pentagrid TypeScript implementation|
+| File                            | Topic                                     |
+| ------------------------------- | ----------------------------------------- |
+| heptagrid-7-3-rules.md          | {7,3} ternary heptagrid rule set          |
+| heptagrid-7-3-implementation.md | {7,3} complete TypeScript implementation  |
+| pentagrid-5-4-implementation.md | {5,4} pentagrid TypeScript implementation |
 
 ## Key Concepts for Implementation
 
@@ -35,6 +35,7 @@ Every tile in a hyperbolic {p,q} tiling is addressed by:
 ```
 
 Where:
+
 - sector: 0 to p-1 (which edge of central tile)
 - path: sequence of child indices down a spanning tree
 
@@ -47,6 +48,7 @@ pentagrid).
 ### Linear Time Operations
 
 All essential operations are O(depth):
+
 - Find neighbor
 - Compute distance
 - Find path
