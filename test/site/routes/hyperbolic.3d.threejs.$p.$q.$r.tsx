@@ -167,13 +167,13 @@ function generateCells(faceDirs: Vec3[], cellSeparation: number, maxDepth: numbe
   while (queue.length > 0 && cells.length < maxCells) {
     const cell = queue.shift()!
     const h = hash(cell.center)
-    if (visited.has(h) || len(cell.center) > 0.92) continue
+    if (visited.has(h) || len(cell.center) > 0.97) continue
     visited.add(h)
     cells.push(cell)
     if (cell.depth < maxDepth) {
       for (const dir of faceDirs) {
         const neighborCenter = translate(cell.center, dir, cellSeparation)
-        if (len(neighborCenter) < 0.95) queue.push({ center: neighborCenter, depth: cell.depth + 1 })
+        if (len(neighborCenter) < 0.98) queue.push({ center: neighborCenter, depth: cell.depth + 1 })
       }
     }
   }
@@ -212,10 +212,10 @@ export default function HyperbolicHoneycombThreeJS() {
     const container = containerRef.current
     if (!container) return
 
-    // Scene with fog for depth
+    // Scene with fog for depth - teal background like reference
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x030308)
-    scene.fog = new THREE.FogExp2(0x030308, 1.5) // Exponential fog for depth
+    scene.background = new THREE.Color(0x1a6b6b)
+    scene.fog = new THREE.FogExp2(0x1a6b6b, 0.8) // Softer fog for depth
 
     // Camera at origin
     const camera = new THREE.PerspectiveCamera(90, container.clientWidth / container.clientHeight, 0.001, 10)
@@ -239,21 +239,21 @@ export default function HyperbolicHoneycombThreeJS() {
     controls.dampingFactor = 0.05
 
     // === LIGHTING ===
-    // Ambient light (soft fill)
-    const ambient = new THREE.AmbientLight(0x404060, 0.4)
+    // Ambient light (soft fill) - reduced
+    const ambient = new THREE.AmbientLight(0x202040, 0.3)
     scene.add(ambient)
 
-    // Point light at center (where camera is)
-    const centerLight = new THREE.PointLight(0xffffff, 1, 2)
+    // Point light at center - dimmer
+    const centerLight = new THREE.PointLight(0xffffff, 0.5, 1.5)
     centerLight.position.set(0, 0, 0)
     scene.add(centerLight)
 
-    // Directional lights from different angles
-    const light1 = new THREE.DirectionalLight(0x8888ff, 0.6)
+    // Directional lights - reduced intensity
+    const light1 = new THREE.DirectionalLight(0x6666aa, 0.4)
     light1.position.set(1, 1, 1)
     scene.add(light1)
 
-    const light2 = new THREE.DirectionalLight(0xff8888, 0.4)
+    const light2 = new THREE.DirectionalLight(0xaa6666, 0.2)
     light2.position.set(-1, -0.5, -1)
     scene.add(light2)
 
@@ -262,23 +262,25 @@ export default function HyperbolicHoneycombThreeJS() {
     const edges = getDodecahedronEdges(baseVerts)
     const faceDirs = getFaceCenters()
 
-    const cellRadius = 0.18
-    const cellSeparation = cellRadius * 2 * 0.85
+    // Much smaller cells to see more of the fractal structure
+    const cellRadius = 0.06
+    const cellSeparation = cellRadius * 2 * 0.9
 
-    const cells = generateCells(faceDirs, cellSeparation, 4, 80)
+    // More cells and deeper recursion for fractal depth
+    const cells = generateCells(faceDirs, cellSeparation, 8, 400)
     setCellCount(cells.length)
 
-    // Material for tubes - metallic look
+    // Material for tubes - silver metallic like reference
     const tubeMaterial = new THREE.MeshStandardMaterial({
-      color: 0x6688bb,
-      metalness: 0.7,
-      roughness: 0.3,
-      emissive: 0x112233,
+      color: 0xc0c0c0,
+      metalness: 0.9,
+      roughness: 0.2,
+      emissive: 0x222222,
       emissiveIntensity: 0.1,
     })
 
-    // Create tubes for each edge
-    const tubeRadius = 0.004
+    // Create tubes for each edge - thin relative to cell size
+    const tubeRadius = 0.0008
     const tubeGroup = new THREE.Group()
 
     for (const cell of cells) {
@@ -288,42 +290,42 @@ export default function HyperbolicHoneycombThreeJS() {
         const v1 = cellVerts[i]
         const v2 = cellVerts[j]
 
-        // Skip if near boundary
-        if (len(v1) > 0.9 || len(v2) > 0.9) continue
+        // Skip only if very near boundary
+        if (len(v1) > 0.96 || len(v2) > 0.96) continue
 
         // Get geodesic arc points
-        const arcPoints = geodesicPoints(v1, v2, 8)
+        const arcPoints = geodesicPoints(v1, v2, 12)
 
-        // Distance-based tube radius (thinner far away)
+        // Distance-based tube radius (thinner far away for depth effect)
         const midDist = (len(v1) + len(v2)) / 2
-        const adjustedRadius = tubeRadius * (1 - midDist * 0.5)
+        const adjustedRadius = tubeRadius * (1 - midDist * 0.7)
 
-        const tube = createTubeMesh(arcPoints, adjustedRadius, tubeMaterial)
+        const tube = createTubeMesh(arcPoints, Math.max(0.0001, adjustedRadius), tubeMaterial)
         if (tube) tubeGroup.add(tube)
       }
     }
 
     scene.add(tubeGroup)
 
-    // Vertex spheres at joints
-    const sphereGeom = new THREE.SphereGeometry(0.008, 8, 8)
+    // Vertex spheres at joints - silver to match tubes
+    const sphereGeom = new THREE.SphereGeometry(0.0015, 6, 6)
     const sphereMat = new THREE.MeshStandardMaterial({
-      color: 0xaaccff,
-      metalness: 0.8,
+      color: 0xd0d0d0,
+      metalness: 0.9,
       roughness: 0.2,
-      emissive: 0x334455,
-      emissiveIntensity: 0.2,
+      emissive: 0x333333,
+      emissiveIntensity: 0.1,
     })
 
     for (const cell of cells) {
       const cellVerts = baseVerts.map(v => mobiusAdd(cell.center, scale(v, cellRadius)))
       for (const v of cellVerts) {
-        if (len(v) > 0.88) continue
+        if (len(v) > 0.95) continue
         const sphere = new THREE.Mesh(sphereGeom, sphereMat)
         sphere.position.set(v[0], v[1], v[2])
-        // Scale spheres based on distance
-        const s = 1 - len(v) * 0.6
-        sphere.scale.setScalar(s)
+        // Scale spheres based on distance from origin (hyperbolic scaling)
+        const s = 1 - len(v) * 0.8
+        sphere.scale.setScalar(Math.max(0.1, s))
         scene.add(sphere)
       }
     }
