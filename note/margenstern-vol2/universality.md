@@ -139,3 +139,40 @@ The construction extends to:
 - Tiling {5,3,4} of hyperbolic 3D space
 
 The key is that localization techniques work in all these tilings.
+
+## Railway Circuits (Intermezzo)
+
+An alternative model for proving weak universality.
+
+### Components
+
+| Component     | Description                                  |
+|---------------|----------------------------------------------|
+| Tracks        | Directed edges for particle movement         |
+| Fixed switch  | Always routes particle to same output        |
+| Flip-flop     | Alternates output direction each traversal   |
+| Memory switch | Remembers last direction, uses it next time  |
+| Crossing      | Two tracks cross without interaction         |
+| Station       | Entry/exit points for particles              |
+
+### How It Proves Universality
+
+1. Railway circuits can simulate any Boolean circuit
+2. Boolean circuits are universal for computation
+3. Therefore railway circuits are computationally universal
+4. A CA that can implement railway components is universal
+
+### Implementation in Hyperbolic CA
+
+The switches and crossings can be implemented using:
+- Local state patterns in cells
+- Signal propagation through the Fibonacci tree
+- State transitions encoding switch behavior
+
+### Weak vs Strong Universality
+
+- **Weak**: Requires infinite initial configuration (encoded program)
+- **Strong**: Works from finite configuration (self-contained)
+
+Railway circuit constructions typically prove weak universality.
+Strong universality requires additional self-replication mechanisms.

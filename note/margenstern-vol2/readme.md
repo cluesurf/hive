@@ -23,6 +23,13 @@ Margenstern.
 | heptagrid-7-3-rules.md          | {7,3} ternary heptagrid rule set          |
 | heptagrid-7-3-implementation.md | {7,3} complete TypeScript implementation  |
 | pentagrid-5-4-implementation.md | {5,4} pentagrid TypeScript implementation |
+| generalized-pq-engine.md        | Unified engine for any {p,q} tiling       |
+
+### Planning
+
+| File                 | Topic                              |
+| -------------------- | ---------------------------------- |
+| remaining-topics.md  | Topics still to capture from book  |
 
 ## Key Concepts for Implementation
 
@@ -56,6 +63,8 @@ All essential operations are O(depth):
 
 ## Reading Progress
 
+### Completed
+
 - [x] Pages 1-40: Introduction, coordinate systems
 - [x] Pages 41-60: Hedlund's theorem, paths
 - [x] Pages 61-80: Coordinate change, point coordinates
@@ -63,9 +72,15 @@ All essential operations are O(depth):
 - [x] Pages 101-120: Communications, applications
 - [x] Pages 121-140: P systems, SAT solving
 - [x] Pages 141-160: Ph = PSPACE, complexity hierarchies
-- [ ] Pages 161-200: Complexity theory continued
-- [ ] Pages 201-300: 3D/4D hyperbolic spaces
-- [ ] Pages 301-359: Additional topics
+- [x] Pages 161-180: Alternating CAs, APh complexity class
+- [x] Pages 181-190: Railway circuits (switches, crossings)
+
+### Remaining
+
+- [ ] Pages 191-200: Universality continued (weak vs strong)
+- [ ] Pages 201-250: 3D hyperbolic spaces introduction
+- [ ] Pages 251-300: 3D coordinate systems and algorithms
+- [ ] Pages 301-359: Additional topics, other tilings
 
 ## Implementation Priorities
 
@@ -73,3 +88,9 @@ All essential operations are O(depth):
 2. **Neighbor computation** - Tree navigation with backtracking
 3. **Distance computation** - LCA-based algorithm
 4. **Rendering** - Poincare disk visualization
+
+## Cross-References
+
+See also:
+- `../margenstern-vol1/` - Volume 1 theoretical foundations
+- `../margenstern-vol1/implementation-insights.md` - Key engine design insights
