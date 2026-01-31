@@ -6,7 +6,19 @@ import {
   Canvas2DRenderer,
   createScene,
   tessellationToNodes,
+  setupParentReferences,
 } from '@cluesurf/hive/rendering'
+import {
+  InteractionController,
+  Hyperbolic2DInteraction,
+  GeometryView,
+} from '@cluesurf/hive/interaction'
+import {
+  FocusManager,
+  FocusRing,
+  FocusNavigation,
+  hitTest,
+} from '@cluesurf/hive/focus'
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -36,19 +48,45 @@ export default function HyperbolicTiling() {
   const { p, q, isHyperbolic, error } = useLoaderData<typeof loader>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<Canvas2DRenderer | null>(null)
+  const controllerRef = useRef<InteractionController | null>(null)
+  const viewRef = useRef<GeometryView | null>(null)
+  const sceneRef = useRef<ReturnType<typeof createScene> | null>(null)
+  const focusManagerRef = useRef<FocusManager | null>(null)
+  const focusRingRef = useRef<FocusRing | null>(null)
+  const focusNavRef = useRef<FocusNavigation | null>(null)
+
   const [zoom, setZoom] = useState(0.9)
   const [maxTiles, setMaxTiles] = useState(2000)
+  const [tileCount, setTileCount] = useState(0)
+  const [focusedTileId, setFocusedTileId] = useState<string | null>(null)
 
-  const drawTiling = useCallback(() => {
+  // Generate tessellation and scene
+  const generateScene = useCallback(() => {
+    if (error || !isHyperbolic) return null
+
+    const tessellation = new Hyperbolic2DTessellation({
+      p,
+      q,
+      maxDepth: 50,
+      maxTiles,
+    })
+    const result = tessellation.generate()
+    const geometry = tessellation.getGeometry()
+
+    setTileCount(result.tiles.size)
+
+    const nodes = tessellationToNodes(result, { hue: 220 })
+    const scene = createScene(geometry, nodes)
+    setupParentReferences(scene)
+    return scene
+  }, [p, q, isHyperbolic, error, maxTiles])
+
+  // Draw the current scene with current view transform
+  const draw = useCallback(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
-
-    if (!rendererRef.current) {
-      rendererRef.current = new Canvas2DRenderer(canvas, { zoom })
-    }
-
     const renderer = rendererRef.current
-    renderer.setConfig({ zoom })
+    if (!canvas || !renderer) return
+
     renderer.clear()
     renderer.drawDiskBoundary()
 
@@ -64,26 +102,164 @@ export default function HyperbolicTiling() {
       return
     }
 
-    const tessellation = new Hyperbolic2DTessellation({
-      p,
-      q,
-      maxDepth: 50, // High depth limit, let maxTiles control
-      maxTiles,
-    })
-    const result = tessellation.generate()
-    const geometry = tessellation.getGeometry()
+    const scene = sceneRef.current
+    if (scene) {
+      renderer.render(scene)
 
-    const nodes = tessellationToNodes(result, { hue: 220 })
-    const scene = createScene(geometry, nodes)
+      // Render focus ring if there's a focused node
+      const focusManager = focusManagerRef.current
+      const focusRing = focusRingRef.current
+      const focused = focusManager?.getFocused()
+      if (focused && focusRing) {
+        focusRing.update(performance.now())
+        focusRing.render(
+          renderer.getContext(),
+          focused,
+          scene,
+          viewRef.current,
+          renderer.getCenterX(),
+          renderer.getCenterY(),
+          renderer.getRadius(),
+        )
+      }
+    }
 
-    renderer.render(scene)
+    const infoLines = [`{${p},${q}} tiling`, `${tileCount} tiles`]
+    if (focusedTileId) {
+      infoLines.push(`Focused: ${focusedTileId}`)
+    }
+    renderer.drawInfo(infoLines)
+  }, [p, q, isHyperbolic, error, tileCount, focusedTileId])
 
-    renderer.drawInfo([
-      `{${p},${q}} tiling`,
-      `${result.tiles.size} tiles`,
-    ])
-  }, [p, q, isHyperbolic, error, zoom, maxTiles])
+  // Initialize renderer, view, and interaction controller
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
 
+    // Create renderer
+    if (!rendererRef.current) {
+      rendererRef.current = new Canvas2DRenderer(canvas, { zoom })
+    }
+
+    // Create focus ring
+    if (!focusRingRef.current) {
+      focusRingRef.current = new FocusRing({
+        color: '#00ff88',
+        width: 3,
+        dash: [8, 4],
+        animated: true,
+        pulseSpeed: 2,
+      })
+    }
+
+    // Create interaction geometry and view
+    const interactionGeom = new Hyperbolic2DInteraction()
+    viewRef.current = new GeometryView(interactionGeom)
+    rendererRef.current.setView(viewRef.current)
+
+    // Create interaction controller
+    controllerRef.current = new InteractionController(
+      interactionGeom,
+      canvas,
+      {
+        sensitivity: 1.0,
+        invertDrag: true, // Drag to scroll (move view opposite to drag)
+        momentumEnabled: true,
+        momentumDecay: 0.92,
+      },
+    )
+
+    // Update view and redraw on transform change
+    const unsubscribe = controllerRef.current.onTransformChange(
+      transform => {
+        if (viewRef.current) {
+          viewRef.current.setTransform(transform)
+        }
+        draw()
+      },
+    )
+
+    // Handle click for focus
+    const handleClick = (event: MouseEvent) => {
+      const scene = sceneRef.current
+      const focusManager = focusManagerRef.current
+      const renderer = rendererRef.current
+      if (!scene || !focusManager || !renderer) return
+
+      // Only handle clicks, not drags
+      const rect = canvas.getBoundingClientRect()
+      const screenPoint = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      }
+
+      const hit = hitTest(
+        screenPoint,
+        scene,
+        viewRef.current,
+        renderer.getCenterX(),
+        renderer.getCenterY(),
+        renderer.getRadius(),
+      )
+
+      if (hit) {
+        focusManager.focus(hit)
+      } else {
+        focusManager.blur()
+      }
+    }
+
+    canvas.addEventListener('click', handleClick)
+
+    return () => {
+      unsubscribe()
+      controllerRef.current?.dispose()
+      focusNavRef.current?.dispose()
+      canvas.removeEventListener('click', handleClick)
+    }
+  }, [])
+
+  // Update renderer config when zoom changes
+  useEffect(() => {
+    if (rendererRef.current) {
+      rendererRef.current.setConfig({ zoom })
+      const radius =
+        Math.min(
+          rendererRef.current.getCenter()[0],
+          rendererRef.current.getCenter()[1],
+        ) * zoom
+      controllerRef.current?.setRadius(radius)
+      draw()
+    }
+  }, [zoom, draw])
+
+  // Regenerate scene when tessellation params change
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const scene = generateScene()
+    sceneRef.current = scene
+
+    if (scene && canvas) {
+      // Create or update focus manager
+      if (focusManagerRef.current) {
+        focusManagerRef.current.setScene(scene)
+      } else {
+        focusManagerRef.current = new FocusManager(scene)
+
+        // Subscribe to focus changes
+        focusManagerRef.current.onFocusChange((prev, next) => {
+          setFocusedTileId(next?.id ?? null)
+        })
+
+        // Set up keyboard navigation
+        focusNavRef.current = new FocusNavigation(focusManagerRef.current, canvas)
+      }
+    }
+
+    draw()
+  }, [generateScene, draw])
+
+  // Handle resize
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -98,17 +274,50 @@ export default function HyperbolicTiling() {
         rendererRef.current.resize(canvas.width, canvas.height)
       }
 
-      drawTiling()
+      controllerRef.current?.updateCanvasDimensions()
+      draw()
     }
 
     resizeCanvas()
     window.addEventListener('resize', resizeCanvas)
     return () => window.removeEventListener('resize', resizeCanvas)
-  }, [drawTiling])
+  }, [draw])
 
+  // Animation loop for focus ring
   useEffect(() => {
-    drawTiling()
-  }, [drawTiling])
+    let animationId: number
+    let lastFocused: string | null = null
+
+    const animate = () => {
+      const focused = focusManagerRef.current?.getFocused()
+
+      // Only run animation loop when there's a focused node
+      if (focused) {
+        // Redraw to update animation
+        draw()
+        animationId = requestAnimationFrame(animate)
+      }
+
+      lastFocused = focused?.id ?? null
+    }
+
+    // Start animation when focus changes
+    if (focusedTileId) {
+      animate()
+    }
+
+    return () => {
+      if (animationId) {
+        cancelAnimationFrame(animationId)
+      }
+    }
+  }, [focusedTileId, draw])
+
+  // Reset view handler
+  const handleResetView = () => {
+    controllerRef.current?.resetView()
+    draw()
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -127,6 +336,12 @@ export default function HyperbolicTiling() {
           </h1>
         </div>
         <div className="flex items-center gap-6">
+          <button
+            onClick={handleResetView}
+            className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+          >
+            Reset View
+          </button>
           <label className="flex items-center gap-2">
             <span className="text-gray-400 text-sm">Tiles:</span>
             <input
@@ -160,9 +375,12 @@ export default function HyperbolicTiling() {
       <main className="flex-1 relative">
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"
         />
       </main>
+      <footer className="p-2 text-center text-gray-500 text-xs">
+        Drag to navigate | Click tile to focus | Arrow keys to navigate | Tab to cycle | Esc to blur
+      </footer>
     </div>
   )
 }

@@ -21,6 +21,7 @@ import {
 } from './colors'
 import type { Point } from '@/form/point'
 import type { Matrix } from '@/form/matrix'
+import type { GeometryView } from '@/interaction/view'
 
 /**
  * Canvas 2D renderer for scene graphs.
@@ -32,6 +33,9 @@ export class Canvas2DRenderer {
   private centerX: number
   private centerY: number
   private radius: number
+
+  // View transform for navigation
+  private view: GeometryView | null = null
 
   // Reusable arrays to avoid allocation
   private tempPoincare: [number, number] = [0, 0]
@@ -87,6 +91,21 @@ export class Canvas2DRenderer {
     this.centerY = height / 2
     this.radius =
       Math.min(this.centerX, this.centerY) * this.config.zoom
+  }
+
+  /**
+   * Set the view for navigation transforms.
+   * When set, all points are transformed through the view before rendering.
+   */
+  setView(view: GeometryView | null): void {
+    this.view = view
+  }
+
+  /**
+   * Get the current view.
+   */
+  getView(): GeometryView | null {
+    return this.view
   }
 
   /**
@@ -165,8 +184,14 @@ export class Canvas2DRenderer {
     geometryType: string,
   ): [number, number] | null {
     if (geometryType === 'hyperbolic') {
+      // Apply view transform if present
+      let transformedPoint = point
+      if (this.view) {
+        transformedPoint = this.view.transformPoint(point)
+      }
+
       // Project from hyperboloid to Poincare disk
-      hyperboloidToPoincare(point, this.tempPoincare)
+      hyperboloidToPoincare(transformedPoint, this.tempPoincare)
 
       // Check visibility - use larger threshold to include edge tiles
       if (!isInsideDisk(this.tempPoincare, 1.5)) {
@@ -378,5 +403,19 @@ export class Canvas2DRenderer {
    */
   getContext(): CanvasRenderingContext2D {
     return this.ctx
+  }
+
+  /**
+   * Get center X coordinate.
+   */
+  getCenterX(): number {
+    return this.centerX
+  }
+
+  /**
+   * Get center Y coordinate.
+   */
+  getCenterY(): number {
+    return this.centerY
   }
 }

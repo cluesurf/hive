@@ -150,3 +150,7 @@ When resuming work on this project:
 ## Inspiration
 
 - [hyperbolic tessellations/honeycombs codebases](https://github.com/lancejpollard?submit=Search&q=hyperbolic&tab=stars&type=&sort=&direction=&submit=Search)
+
+## Notes
+
+- [HyperRogue Book](https://roguetemple.com/z/book/book.pdf)

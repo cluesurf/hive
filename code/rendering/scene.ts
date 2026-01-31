@@ -31,6 +31,21 @@ export interface SceneNode {
 
   /** Child nodes */
   children: SceneNode[]
+
+  /** Parent node reference (null for root-level nodes) */
+  parent: SceneNode | null
+
+  /** Whether this node can receive focus */
+  focusable: boolean
+
+  /** Optional explicit focus order (lower = earlier in tab order) */
+  tabIndex?: number
+
+  /** Human-readable name for search/voice commands */
+  name?: string
+
+  /** Center point for camera targeting (in geometry coordinates) */
+  center?: Point
 }
 
 /**
@@ -167,6 +182,10 @@ export function createPolygon(
     strokeWidth?: number
     depth?: number
     visible?: boolean
+    focusable?: boolean
+    tabIndex?: number
+    name?: string
+    center?: Point
   } = {},
 ): PolygonNode {
   return {
@@ -179,6 +198,11 @@ export function createPolygon(
     depth: options.depth ?? 0,
     visible: options.visible ?? true,
     children: [],
+    parent: null,
+    focusable: options.focusable ?? true,
+    tabIndex: options.tabIndex,
+    name: options.name,
+    center: options.center,
   }
 }
 
@@ -195,6 +219,9 @@ export function createPath(
     lineDash?: number[]
     depth?: number
     visible?: boolean
+    focusable?: boolean
+    tabIndex?: number
+    name?: string
   } = {},
 ): PathNode {
   return {
@@ -208,6 +235,10 @@ export function createPath(
     depth: options.depth ?? 0,
     visible: options.visible ?? true,
     children: [],
+    parent: null,
+    focusable: options.focusable ?? false,
+    tabIndex: options.tabIndex,
+    name: options.name,
   }
 }
 
@@ -223,6 +254,9 @@ export function createPoint(
     strokeColor?: string | null
     depth?: number
     visible?: boolean
+    focusable?: boolean
+    tabIndex?: number
+    name?: string
   } = {},
 ): PointNode {
   return {
@@ -235,6 +269,11 @@ export function createPoint(
     depth: options.depth ?? 0,
     visible: options.visible ?? true,
     children: [],
+    parent: null,
+    focusable: options.focusable ?? true,
+    tabIndex: options.tabIndex,
+    name: options.name,
+    center: position,
   }
 }
 
@@ -252,6 +291,9 @@ export function createText(
     align?: 'left' | 'center' | 'right'
     depth?: number
     visible?: boolean
+    focusable?: boolean
+    tabIndex?: number
+    name?: string
   } = {},
 ): TextNode {
   return {
@@ -266,6 +308,11 @@ export function createText(
     depth: options.depth ?? 0,
     visible: options.visible ?? true,
     children: [],
+    parent: null,
+    focusable: options.focusable ?? false,
+    tabIndex: options.tabIndex,
+    name: options.name,
+    center: position,
   }
 }
 
@@ -279,16 +326,30 @@ export function createGroup(
     transform?: Matrix | null
     depth?: number
     visible?: boolean
+    focusable?: boolean
+    tabIndex?: number
+    name?: string
   } = {},
 ): GroupNode {
-  return {
+  const group: GroupNode = {
     id,
     type: 'group',
     transform: options.transform ?? null,
     depth: options.depth ?? 0,
     visible: options.visible ?? true,
     children,
+    parent: null,
+    focusable: options.focusable ?? false,
+    tabIndex: options.tabIndex,
+    name: options.name,
   }
+
+  // Set parent references for children
+  for (const child of children) {
+    child.parent = group
+  }
+
+  return group
 }
 
 /**
@@ -309,6 +370,46 @@ export function addNodes(scene: Scene, nodes: AnyNode[]): Scene {
     ...scene,
     nodes: [...scene.nodes, ...nodes],
   }
+}
+
+/**
+ * Set up parent references for all nodes in a scene.
+ * Call this after building a scene to ensure parent references are correct.
+ */
+export function setupParentReferences(scene: Scene): void {
+  const setupParent = (nodes: SceneNode[], parent: SceneNode | null) => {
+    for (const node of nodes) {
+      node.parent = parent
+      if (node.children.length > 0) {
+        setupParent(node.children, node)
+      }
+    }
+  }
+
+  setupParent(scene.nodes, null)
+}
+
+/**
+ * Calculate and set the center point for a polygon node.
+ * Uses the centroid of vertices.
+ */
+export function calculatePolygonCenter(node: PolygonNode): Point {
+  if (node.vertices.length === 0) {
+    return [0, 0, 1]
+  }
+
+  let sumX = 0
+  let sumY = 0
+  let sumT = 0
+
+  for (const v of node.vertices) {
+    sumX += v[0] ?? 0
+    sumY += v[1] ?? 0
+    sumT += v[2] ?? 1
+  }
+
+  const n = node.vertices.length
+  return [sumX / n, sumY / n, sumT / n]
 }
 
 /**

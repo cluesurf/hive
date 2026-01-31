@@ -87,11 +87,30 @@ export function tessellationToNodes(
       lightnessDecay,
     )
 
+    // Calculate center from vertices
+    let centerX = 0
+    let centerY = 0
+    let centerT = 0
+    for (const v of tile.vertices) {
+      centerX += v[0] ?? 0
+      centerY += v[1] ?? 0
+      centerT += v[2] ?? 1
+    }
+    const n = tile.vertices.length
+    const center: [number, number, number] = [
+      centerX / n,
+      centerY / n,
+      centerT / n,
+    ]
+
     const polygon = createPolygon(tile.id, tile.vertices, {
       fillColor,
       strokeColor,
       strokeWidth: 1,
       depth: tile.depth,
+      focusable: true,
+      name: `Tile ${tile.id}`,
+      center,
     })
 
     nodes.push(polygon)
