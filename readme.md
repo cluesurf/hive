@@ -18,7 +18,7 @@
 
 ## Introduction
 
-Hive aims to be TypeScript library for visualizing and exploring the 3
+Hive aims to be a TypeScript library for visualizing and exploring the 3
 main geometries. It provides a unified framework for working with
 hyperbolic, spherical, and Euclidean spaces in 2D, 3D, and higher
 dimensions. The library enables generation of tessellations, honeycombs,
