@@ -139,6 +139,7 @@ export class Hyperbolic2DTessellation {
   // Cell lookups
   private cellByHash: Map<string, Cell> = new Map() // By transform hash
   private cellByAddress: Map<string, Cell> = new Map() // By Margenstern address
+  private cellById: Map<number, Cell> = new Map() // By numeric ID - for direct lookup
 
   // Caches for Margenstern computations
   private nodeTypeCache: Map<string, NodeType> = new Map()
@@ -225,7 +226,7 @@ export class Hyperbolic2DTessellation {
     transform: Matrix | null,
     address: MargensternAddress,
   ): Cell {
-    return {
+    const cell: Cell = {
       id: this.nextId++,
       address,
       neighbors: new Array(this.config.p).fill(null),
@@ -234,6 +235,9 @@ export class Hyperbolic2DTessellation {
       transform,
       lastSeenFrame: 0,
     }
+    // Add to ID lookup for direct access
+    this.cellById.set(cell.id, cell)
+    return cell
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -860,17 +864,23 @@ export class Hyperbolic2DTessellation {
   /**
    * Navigate to a cell by ID (from a click).
    * Returns the transform needed to center the view on that cell.
-   * Also sets the cell as the new center.
+   * Also sets the cell as the new center and expands its neighbors.
    */
   navigateToCell(cellId: string): Matrix | null {
     const targetId = parseInt(cellId, 10)
 
-    // Find the cell by BFS from center (it should be nearby since it was visible)
+    // Find the cell by direct lookup
     const target = this.findCellById(targetId)
     if (!target) return null
 
     // Set as new center
     this.centerCell = target
+
+    // IMPORTANT: Expand all neighbors of the target cell
+    // This ensures outer tiles exist for the next click
+    for (let d = 0; d < this.config.p; d++) {
+      this.move(target, d)
+    }
 
     // Compute transform to center view on this cell
     const cellTransform = target.transform
@@ -916,108 +926,83 @@ export class Hyperbolic2DTessellation {
   }
 
   /**
+   * Expand cells around a target cell (create all neighbors recursively).
+   * Call this BEFORE animation to ensure cells exist.
+   */
+  expandAroundCell(cellId: string, depth: number = 2): void {
+    const targetId = parseInt(cellId, 10)
+    const target = this.findCellById(targetId)
+    if (!target) return
+
+    // BFS expansion to specified depth
+    const visited = new Set<Cell>()
+    const queue: Array<{ cell: Cell; d: number }> = [{ cell: target, d: 0 }]
+
+    while (queue.length > 0) {
+      const { cell, d } = queue.shift()!
+      if (visited.has(cell)) continue
+      visited.add(cell)
+
+      // Create all neighbors of this cell
+      for (let dir = 0; dir < this.config.p; dir++) {
+        const neighbor = this.move(cell, dir)
+        if (d < depth && !visited.has(neighbor)) {
+          queue.push({ cell: neighbor, d: d + 1 })
+        }
+      }
+    }
+  }
+
+  /**
+   * Expand the entire visible boundary outward by one layer.
+   * This ensures all visible tiles have their neighbors created,
+   * so clicking any edge tile will work.
+   */
+  expandVisibleBoundary(): void {
+    // Get all currently visible tiles
+    const visibleTiles = this.getVisibleTiles()
+
+    // For each visible tile, ensure all its neighbors exist
+    for (const tile of visibleTiles) {
+      const cell = this.findCellById(parseInt(tile.id, 10))
+      if (!cell) continue
+
+      // Create all neighbors
+      for (let dir = 0; dir < this.config.p; dir++) {
+        this.move(cell, dir)
+      }
+    }
+  }
+
+  /**
    * Walk from current center toward a target cell, creating cells along the way.
    * This ensures the graph path exists even if we're using computed viewTransforms.
    */
   walkTowardCell(cellId: string): void {
     const targetId = parseInt(cellId, 10)
 
-    // First try to find it (might already exist)
-    let target = this.findCellById(targetId)
+    // Direct lookup - O(1)
+    const target = this.findCellById(targetId)
     if (target) {
-      // Path exists, just update center
+      // Found it! Set as center and expand its neighbors
       this.centerCell = target
+      for (let d = 0; d < this.config.p; d++) {
+        this.move(target, d)
+      }
       return
     }
 
-    // Walk toward where we think the target is by using its expected position
-    // This creates cells along the way
-    for (let step = 0; step < 500; step++) {
-      const currentTransform = this.centerCell.transform
-      if (!currentTransform) break
-
-      // Check if we found the target
-      if (this.centerCell.id === targetId) break
-
-      // Try to find target from current position
-      target = this.findCellById(targetId)
-      if (target) {
-        this.centerCell = target
-        break
-      }
-
-      // Expand outward from current cell to create more cells
-      for (let d = 0; d < this.config.p; d++) {
-        this.move(this.centerCell, d)
-      }
-
-      // Move to the neighbor closest to view center (which should be toward target)
-      const combined = this.composeSU11(this.viewTransform, currentTransform)
-      const center = this.applySU11Transform(combined, [0, 0])
-      const currentDist = center[0] * center[0] + center[1] * center[1]
-
-      if (currentDist < 0.05) break
-
-      let bestNeighbor = this.centerCell
-      let bestDist = currentDist
-
-      for (let d = 0; d < this.config.p; d++) {
-        const neighbor = this.centerCell.neighbors[d]
-        if (!neighbor) continue
-        const neighborTransform = neighbor.transform
-        if (!neighborTransform) continue
-
-        const neighborCombined = this.composeSU11(
-          this.viewTransform,
-          neighborTransform,
-        )
-        const neighborCenter = this.applySU11Transform(neighborCombined, [0, 0])
-        const neighborDist =
-          neighborCenter[0] * neighborCenter[0] +
-          neighborCenter[1] * neighborCenter[1]
-
-        if (neighborDist < bestDist) {
-          bestDist = neighborDist
-          bestNeighbor = neighbor
-        }
-      }
-
-      if (bestNeighbor === this.centerCell) break
-      this.centerCell = bestNeighbor
-    }
+    // Cell doesn't exist yet - this shouldn't happen if we clicked on a visible tile
+    // But just in case, walk toward the view center creating cells
+    this.updateCenterCell()
   }
 
   /**
-   * Find a cell by ID via BFS from center.
+   * Find a cell by ID - direct lookup from cellById map.
    */
   private findCellById(targetId: number): Cell | null {
-    if (this.centerCell.id === targetId) return this.centerCell
-
-    const visited = new Set<Cell>()
-    const queue: Cell[] = [this.centerCell]
-    let queueIndex = 0
-
-    // Search within reasonable radius (visible cells are nearby)
-    const maxSearch = 1000
-
-    while (queueIndex < queue.length && visited.size < maxSearch) {
-      const cell = queue[queueIndex++]!
-
-      if (visited.has(cell)) continue
-      visited.add(cell)
-
-      if (cell.id === targetId) return cell
-
-      // Check existing neighbors (don't create new ones)
-      for (let d = 0; d < this.config.p; d++) {
-        const neighbor = cell.neighbors[d]
-        if (neighbor && !visited.has(neighbor)) {
-          queue.push(neighbor)
-        }
-      }
-    }
-
-    return null
+    // Direct lookup - O(1) instead of BFS
+    return this.cellById.get(targetId) ?? null
   }
 
   /**

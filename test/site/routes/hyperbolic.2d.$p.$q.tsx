@@ -257,6 +257,10 @@ export default function HyperbolicTiling() {
       const view = viewRef.current
       if (!tessellation || !view) return
 
+      // BEFORE animation: expand the entire visible boundary
+      // This ensures ALL edge tiles have their outer neighbors created
+      tessellation.expandVisibleBoundary()
+
       // Get the target transform WITHOUT changing centerCell
       const endTransform = tessellation.getCellCenterTransform(cellId)
       if (!endTransform) return
@@ -402,6 +406,8 @@ export default function HyperbolicTiling() {
             view.setTransform(actualTransform)
             tessellation.setViewTransform(actualTransform)
             draw()
+            // Expand boundary so next click on any edge tile works
+            tessellation.expandVisibleBoundary()
           }
           anim.active = false
         }
