@@ -8,7 +8,7 @@
 
 <h3 align='center'>@cluesurf/hive</h3>
 <p align='center'>
-  Visualizations in TypeScript
+  Visualization Basics in TypeScript
 </p>
 
 <br/>

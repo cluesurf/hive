@@ -2,7 +2,7 @@
 
 ## Security rules
 
-- Do not read or include any `.env` or secrets files.
+- Do not read or include any secrets files.
 - Avoid scanning hidden files or non-template configuration files.
 
 ## Conventions
