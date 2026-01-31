@@ -62,17 +62,13 @@ This is phase 1 of the vibe coding UI, 2D demo. _(Test with
 
 ## Development
 
-```
+```zsh
 # manually inspect rendering and such
 pnpm test:site
 
 # run library tests
 pnpm test
 ```
-
-## Inspiration
-
-- [hyperbolic tessellations/honeycombs codebases](https://github.com/lancejpollard?submit=Search&q=hyperbolic&tab=stars&type=&sort=&direction=&submit=Search)
 
 ## License
 

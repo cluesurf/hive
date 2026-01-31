@@ -5,23 +5,23 @@ visualization.
 
 ## Quick Reference
 
-| Topic                    | Document                  |
-| ------------------------ | ------------------------- |
-| Project goals & vision   | `vision.md`               |
-| Implementation phases    | `plan.md`                 |
-| Directory structure      | `package-structure.md`    |
-| Math theory              | `theory.md`               |
-| Curves (2D/3D)           | `curves.md`               |
-| Why hyperboloid model    | `hyperboloid-analysis.md` |
-| Unified geometry (S/E/H) | `unified-geometry.md`     |
-| Geometry implementations | `geometry-models.md`      |
-| Design principles        | `principles.md`           |
-| Coordinate systems       | `coordinate-systems.md`   |
-| Design TODOs             | `design-todos.md`         |
-| Tessellation generation  | `tessellation.md`         |
-| Kaleidoscope system      | `kaleidoscope.md`         |
-| Fractal system           | `fractals.md`             |
-| Hyperbolic honeycombs    | `hyperbolic-honeycombs.md`|
+| Topic                    | Document                   |
+| ------------------------ | -------------------------- |
+| Project goals & vision   | `vision.md`                |
+| Implementation phases    | `plan.md`                  |
+| Directory structure      | `package-structure.md`     |
+| Math theory              | `theory.md`                |
+| Curves (2D/3D)           | `curves.md`                |
+| Why hyperboloid model    | `hyperboloid-analysis.md`  |
+| Unified geometry (S/E/H) | `unified-geometry.md`      |
+| Geometry implementations | `geometry-models.md`       |
+| Design principles        | `principles.md`            |
+| Coordinate systems       | `coordinate-systems.md`    |
+| Design TODOs             | `design-todos.md`          |
+| Tessellation generation  | `tessellation.md`          |
+| Kaleidoscope system      | `kaleidoscope.md`          |
+| Fractal system           | `fractals.md`              |
+| Hyperbolic honeycombs    | `hyperbolic-honeycombs.md` |
 
 ## Architecture
 
@@ -34,13 +34,13 @@ visualization.
 
 ## Features
 
-| Topic                 | Document              |
-| --------------------- | --------------------- |
-| User interaction      | `interactivity.md`    |
-| Paths, labels, layers | `visual-features.md`  |
-| SVG-style paths       | `visual-features.md`  |
-| Path animation        | `visual-features.md`  |
-| Curve rendering       | `curve-rendering.md`  |
+| Topic                 | Document             |
+| --------------------- | -------------------- |
+| User interaction      | `interactivity.md`   |
+| Paths, labels, layers | `visual-features.md` |
+| SVG-style paths       | `visual-features.md` |
+| Path animation        | `visual-features.md` |
+| Curve rendering       | `curve-rendering.md` |
 
 ## Research & References
 
@@ -146,3 +146,7 @@ When resuming work on this project:
 3. Reference `package-structure.md` for where code goes
 4. Use `theory.md` for mathematical foundations
 5. Check `optimization.md` for performance patterns
+
+## Inspiration
+
+- [hyperbolic tessellations/honeycombs codebases](https://github.com/lancejpollard?submit=Search&q=hyperbolic&tab=stars&type=&sort=&direction=&submit=Search)
