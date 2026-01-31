@@ -2,26 +2,27 @@
 
 ## Summary Table
 
-| Repository               | Language        | Purpose                      | Key Value                         |
-| ------------------------ | --------------- | ---------------------------- | --------------------------------- |
-| **hyperrogue-master**    | **C++**         | **Hyperbolic roguelike game**| **Gold standard, 218K lines**     |
-| MagicTile-master         | C#              | 2D hyperbolic puzzles        | Complete reflection-based tiling  |
-| Honeycombs-master        | C#              | 3D hyperbolic honeycombs     | R3.Core library, 3D generation    |
-| ht.js-make               | TypeScript      | Port of MagicTile/Honeycombs | Best TypeScript starting point    |
-| hyperbolic-tiling-main   | TypeScript/GLSL | GPU-based rendering          | Shader approach, Wythoff          |
-| hyperbolic-ca-simulator  | CoffeeScript    | Cellular automata            | von Dyck groups, infinite tilings |
-| hyperboloid-model-master | JavaScript      | Hyperboloid math             | Clean internal representation     |
-| hyperbolic-canvas-master | JavaScript      | Demo app                     | Integration example               |
+| Repository               | Language        | Purpose                       | Key Value                         |
+| ------------------------ | --------------- | ----------------------------- | --------------------------------- |
+| **hyperrogue-master**    | **C++**         | **Hyperbolic roguelike game** | **Gold standard, 218K lines**     |
+| MagicTile-master         | C#              | 2D hyperbolic puzzles         | Complete reflection-based tiling  |
+| Honeycombs-master        | C#              | 3D hyperbolic honeycombs      | R3.Core library, 3D generation    |
+| ht.js-make               | TypeScript      | Port of MagicTile/Honeycombs  | Best TypeScript starting point    |
+| hyperbolic-tiling-main   | TypeScript/GLSL | GPU-based rendering           | Shader approach, Wythoff          |
+| hyperbolic-ca-simulator  | CoffeeScript    | Cellular automata             | von Dyck groups, infinite tilings |
+| hyperboloid-model-master | JavaScript      | Hyperboloid math              | Clean internal representation     |
+| hyperbolic-canvas-master | JavaScript      | Demo app                      | Integration example               |
 
 ## HyperRogue (Gold Standard)
 
-**Path:** `base/hyperrogue-master/`
-**Docs:** https://roguetemple.com/z/hyper/dev.php
-**Models:** https://roguetemple.com/z/hyper/models.php
+- **Path:** `base/hyperrogue-master/`
+- **Docs:** https://roguetemple.com/z/hyper/dev.php
+- **Models:** https://roguetemple.com/z/hyper/models.php
 
 **Scale:** 180+ files, 218,000+ lines, 10+ years development.
 
 **Key Architecture:**
+
 - Uses Minkowski hyperboloid model internally
 - Two-level tiling: heptagons (coarse) + cells (fine)
 - Lazy generation via state automaton
@@ -29,6 +30,7 @@
 - Supports 40+ geometries (2D, 3D, non-isotropic)
 
 **Key Files:**
+
 - `hyperpoint.cpp` - Core geometry (hyperpoint, transmatrix)
 - `heptagon.cpp` - Heptagon grid generation
 - `cell.cpp` - Cell layer
@@ -37,8 +39,9 @@
 - `reg3.cpp` - 3D honeycombs
 
 **Developer recommendation:**
-> "I recommend using the Minkowski hyperboloid model internally, and
-> the Poincaré disk model for display, just as HyperRogue does."
+
+> "I recommend using the Minkowski hyperboloid model internally, and the
+> Poincaré disk model for display, just as HyperRogue does."
 
 See `hyperrogue.md` for detailed analysis.
 
@@ -218,13 +221,13 @@ Poincare or other models for display.
 
 ## Comparison: Tiling Generation
 
-| Repository        | Method     | Infinite | Topology |
-| ----------------- | ---------- | -------- | -------- |
-| **HyperRogue**    | State Machine | Yes   | Yes      |
-| MagicTile         | Reflection | No       | Yes      |
-| ht.js-make        | Reflection | No       | Yes      |
-| hyperbolic-tiling | Shader     | Yes      | No       |
-| hyperbolic-ca     | Group      | Yes      | Yes      |
+| Repository        | Method        | Infinite | Topology |
+| ----------------- | ------------- | -------- | -------- |
+| **HyperRogue**    | State Machine | Yes      | Yes      |
+| MagicTile         | Reflection    | No       | Yes      |
+| ht.js-make        | Reflection    | No       | Yes      |
+| hyperbolic-tiling | Shader        | Yes      | No       |
+| hyperbolic-ca     | Group         | Yes      | Yes      |
 
 **Recommendation:** Support both reflection-based (for finite
 interactive tilings) and group-based (for infinite tilings and CA).

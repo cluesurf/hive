@@ -1,5 +1,19 @@
 # Project Guidelines
 
+## Documentation
+
+All project documentation is in `note/`. Start with `note/readme.md` for
+an index of all docs. Key files:
+
+| Topic              | Location                     |
+| ------------------ | ---------------------------- |
+| Doc index          | `note/readme.md`             |
+| Project vision     | `note/vision.md`             |
+| Implementation     | `note/plan.md`               |
+| Package structure  | `note/package-structure.md`  |
+| Math theory        | `note/theory.md`             |
+| Optimization       | `note/optimization.md`       |
+
 ## Security rules
 
 - Do not read or include any secrets files.

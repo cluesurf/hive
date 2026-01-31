@@ -14,15 +14,16 @@ Looking at the reference implementations:
 
 | Repository              | Internal Model      | Why They Chose It              |
 | ----------------------- | ------------------- | ------------------------------ |
+| **HyperRogue**          | **Hyperboloid**     | Official recommendation        |
 | MagicTile/ht.js-make    | Poincare (Complex)  | Mobius transforms are natural  |
 | hyperbolic-ca-simulator | Hyperboloid         | Clean group theory, matrix ops |
 | hyperboloid-model       | Hyperboloid         | Clean math, linear isometries  |
 | hyperbolic-tiling       | Homogeneous Complex | GPU-friendly, shader math      |
 
-The more mathematically sophisticated implementations (hyperbolic-ca and
-hyperboloid-model) chose the hyperboloid model. The MagicTile lineage
-uses Poincare because Mobius transforms are expressed naturally in
-complex numbers.
+The most mature implementation (HyperRogue, 218K lines, 10+ years) and
+the mathematically sophisticated ones chose the hyperboloid model. The
+MagicTile lineage uses Poincare because Mobius transforms are expressed
+naturally in complex numbers.
 
 ## Hyperboloid Model Advantages
 

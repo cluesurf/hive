@@ -8,9 +8,9 @@ Create foundational types for all geometric computations.
 
 **Files:**
 
-- `src/core/complex.ts` - Complex number operations
-- `src/core/vector.ts` - Vector2, Vector3, Vector4
-- `src/core/matrix.ts` - Matrix3, Matrix4
+- `code/form/complex.ts` - Complex number operations
+- `code/form/vector.ts` - Vector2, Vector3, Vector4
+- `code/form/matrix.ts` - Matrix3, Matrix4
 
 **Complex Operations:**
 
@@ -45,7 +45,7 @@ Core internal representation for hyperbolic geometry.
 
 **Files:**
 
-- `src/model/hyperboloid.ts`
+- `code/model/hyperboloid.ts`
 
 **Functions:**
 
@@ -77,10 +77,10 @@ Convert between different hyperbolic models.
 
 **Files:**
 
-- `src/model/poincare.ts`
-- `src/model/klein.ts`
-- `src/model/halfplane.ts`
-- `src/model/band.ts`
+- `code/model/poincare.ts`
+- `code/model/klein.ts`
+- `code/model/halfplane.ts`
+- `code/model/band.ts`
 
 **Conversions:**
 
@@ -108,7 +108,7 @@ Complex analysis approach for 2D transformations.
 
 **Files:**
 
-- `src/transform/mobius.ts`
+- `code/transform/mobius.ts`
 
 **Class:**
 
@@ -142,8 +142,8 @@ Generalized circles (including lines as limiting case).
 
 **Files:**
 
-- `src/geometry/circle.ts`
-- `src/geometry/geodesic.ts`
+- `code/geometry/circle.ts`
+- `code/geometry/geodesic.ts`
 
 **Circle:**
 
@@ -169,8 +169,8 @@ Regular and irregular polygons.
 
 **Files:**
 
-- `src/geometry/polygon.ts`
-- `src/geometry/segment.ts`
+- `code/geometry/polygon.ts`
+- `code/geometry/segment.ts`
 
 **Segment:**
 
@@ -210,7 +210,7 @@ Tiles with adjacency information.
 
 **Files:**
 
-- `src/tiling/tile.ts`
+- `code/tiling/tile.ts`
 
 ```typescript
 interface Tile {
@@ -235,7 +235,7 @@ For finite, explicit tilings.
 
 **Files:**
 
-- `src/tiling/reflection-generator.ts`
+- `code/tiling/reflection-generator.ts`
 
 ```typescript
 interface TilingConfig {
@@ -265,8 +265,8 @@ For infinite, sparse tilings (cellular automata).
 
 **Files:**
 
-- `src/tiling/group-generator.ts`
-- `src/tiling/von-dyck.ts`
+- `code/tiling/group-generator.ts`
+- `code/tiling/von-dyck.ts`
 
 ```typescript
 // Von Dyck group element
@@ -304,7 +304,7 @@ Uniform tilings beyond regular {p,q}.
 
 **Files:**
 
-- `src/tiling/wythoff.ts`
+- `code/tiling/wythoff.ts`
 
 ```typescript
 type WythoffSymbol =
@@ -332,7 +332,7 @@ class WythoffGenerator {
 
 **Files:**
 
-- `src/model/hyperboloid3d.ts`
+- `code/model/hyperboloid3d.ts`
 
 ```typescript
 // Point on 4D hyperboloid: x² + y² + z² - w² = -1
@@ -360,7 +360,7 @@ Regular and uniform polyhedra as cell faces.
 
 **Files:**
 
-- `src/geometry/polyhedron.ts`
+- `code/geometry/polyhedron.ts`
 
 ```typescript
 interface Face {
@@ -390,7 +390,7 @@ icosahedron(): Polyhedron
 
 **Files:**
 
-- `src/tiling/honeycomb.ts`
+- `code/tiling/honeycomb.ts`
 
 ```typescript
 interface HoneycombConfig {
@@ -417,8 +417,8 @@ GPU-accelerated rendering.
 
 **Files:**
 
-- `src/render/webgl/renderer.ts`
-- `src/render/webgl/shaders/*.glsl`
+- `code/render/webgl/renderer.ts`
+- `code/render/webgl/shaders/*.glsl`
 
 ```typescript
 interface RenderOptions {
@@ -444,8 +444,8 @@ For infinite tilings without explicit geometry.
 
 **Files:**
 
-- `src/render/webgl/tiling-shader.ts`
-- `src/render/webgl/shaders/tiling.frag`
+- `code/render/webgl/tiling-shader.ts`
+- `code/render/webgl/shaders/tiling.frag`
 
 ```typescript
 class TilingShaderRenderer {
@@ -462,7 +462,7 @@ Fallback and simple use cases.
 
 **Files:**
 
-- `src/render/canvas/renderer.ts`
+- `code/render/canvas/renderer.ts`
 
 ```typescript
 class CanvasRenderer {
@@ -481,7 +481,7 @@ For export and vector graphics.
 
 **Files:**
 
-- `src/render/svg/renderer.ts`
+- `code/render/svg/renderer.ts`
 
 ```typescript
 class SVGRenderer {
@@ -496,8 +496,8 @@ class SVGRenderer {
 
 **Files:**
 
-- `src/camera/camera2d.ts`
-- `src/camera/camera3d.ts`
+- `code/camera/camera2d.ts`
+- `code/camera/camera3d.ts`
 
 ```typescript
 class Camera2D {
@@ -527,9 +527,9 @@ class Camera3D {
 
 **Files:**
 
-- `src/input/mouse.ts`
-- `src/input/touch.ts`
-- `src/input/keyboard.ts`
+- `code/input/mouse.ts`
+- `code/input/touch.ts`
+- `code/input/keyboard.ts`
 
 ```typescript
 class InputHandler {
@@ -547,8 +547,8 @@ class InputHandler {
 
 **Files:**
 
-- `src/animation/animator.ts`
-- `src/animation/easing.ts`
+- `code/animation/animator.ts`
+- `code/animation/easing.ts`
 
 ```typescript
 type EasingFunction = (t: number) => number
@@ -582,8 +582,8 @@ const easing = {
 
 **Files:**
 
-- `src/scene/node.ts`
-- `src/scene/scene.ts`
+- `code/scene/node.ts`
+- `code/scene/scene.ts`
 
 ```typescript
 abstract class SceneNode {
@@ -614,9 +614,9 @@ class Scene {
 
 **Files:**
 
-- `src/scene/tiling-node.ts`
-- `src/scene/shape-node.ts`
-- `src/scene/group-node.ts`
+- `code/scene/tiling-node.ts`
+- `code/scene/shape-node.ts`
+- `code/scene/group-node.ts`
 
 ```typescript
 class TilingNode extends SceneNode {
@@ -645,9 +645,9 @@ class GroupNode extends SceneNode {
 
 **Files:**
 
-- `src/ca/field.ts`
-- `src/ca/rules.ts`
-- `src/ca/simulator.ts`
+- `code/ca/field.ts`
+- `code/ca/rules.ts`
+- `code/ca/simulator.ts`
 
 ```typescript
 interface Rule {
@@ -680,8 +680,8 @@ class CASimulator {
 
 **Files:**
 
-- `src/fractal/ifs.ts`
-- `src/fractal/kleinian.ts`
+- `code/fractal/ifs.ts`
+- `code/fractal/kleinian.ts`
 
 ```typescript
 // Iterated Function System
@@ -705,8 +705,8 @@ class KleinianGroup {
 
 **Files:**
 
-- `src/4d/hyperboloid4d.ts`
-- `src/4d/projection.ts`
+- `code/4d/hyperboloid4d.ts`
+- `code/4d/projection.ts`
 
 ```typescript
 // 5D Minkowski for H⁴

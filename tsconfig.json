@@ -14,8 +14,7 @@
     "noUncheckedIndexedAccess": true,
     "baseUrl": ".",
     "paths": {
-      "~/": ["./"],
-      "~/*": ["./*"]
+      "@/*": ["./code/*"]
     },
     "noErrorTruncation": true,
     "types": ["node"],
