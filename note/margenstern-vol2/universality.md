@@ -14,8 +14,8 @@ appropriate encoding of A and its initial configuration.
 ### Theorem 2: Infinite Configurations
 
 For each k, there exists a cellular automaton V on the pentagrid that
-works on infinite configurations and can simulate any CA with at most
-k states.
+works on infinite configurations and can simulate any CA with at most k
+states.
 
 ### Theorem 3: General Tilings
 
@@ -50,14 +50,14 @@ A scaled tree with factor k is constructed by:
 
 The simulation uses multiple layers (like tracks for Turing machines):
 
-| Layer | Purpose                                    |
-|-------|-------------------------------------------|
-| L0    | Standard Fibonacci tree structure          |
-| L1    | Scaled tree structure                      |
-| L2    | Border of configuration (silver cells)     |
-| L3    | States of simulated cells                  |
-| L4    | Copy of transition table                   |
-| L5    | Previous configuration (for comparison)    |
+| Layer | Purpose                                 |
+| ----- | --------------------------------------- |
+| L0    | Standard Fibonacci tree structure       |
+| L1    | Scaled tree structure                   |
+| L2    | Border of configuration (silver cells)  |
+| L3    | States of simulated cells               |
+| L4    | Copy of transition table                |
+| L5    | Previous configuration (for comparison) |
 
 ### Simulation Cycle
 
@@ -71,6 +71,7 @@ Each cycle simulates one step of the simulated CA:
 ### Transition Table Encoding
 
 The transition table is encoded as a tree:
+
 - Level 1: current state (n_A nodes)
 - Level 2: father's state
 - Levels 3-5: other neighbors' states
@@ -78,8 +79,9 @@ The transition table is encoded as a tree:
 
 ## Synchronization
 
-Due to exponential path lengths in scaled trees, synchronization
-signals are used to coordinate:
+Due to exponential path lengths in scaled trees, synchronization signals
+are used to coordinate:
+
 - Cycle boundaries
 - Stage transitions within cycles
 - Comparison of configurations
@@ -98,6 +100,7 @@ transport.
 ### Border Extension
 
 When a border cell becomes non-blank:
+
 1. Extend all F-trees by one level
 2. Copy transition table to new simul-cells
 3. Signal `new_cell` to central cell
@@ -112,10 +115,12 @@ When a border cell becomes non-blank:
 ## Why Euclidean Techniques Don't Work
 
 In Euclidean space, universality proofs often use similarity:
+
 - Gather cells into larger "super-cells"
 - Super-cells are geometrically similar to original cells
 
 In hyperbolic space:
+
 - No similarity exists
 - Size and shape are coupled (absolute distance)
 - Cannot create "bigger pentagons"
@@ -125,6 +130,7 @@ Solution: Use scaled trees that adapt to hyperbolic geometry.
 ## Complexity of Simulation
 
 The simulation is NOT uniform:
+
 - Cycle duration grows exponentially with distance from center
 - Path lengths to lateral neighbors grow exponentially
 - No constant slowdown factor possible
@@ -134,6 +140,7 @@ This is fundamentally different from Euclidean universality results.
 ## Extension to Other Tilings
 
 The construction extends to:
+
 - Ternary heptagrid {7,3} (7 trees instead of 5)
 - All tilings {p,4} and {p+2,3}
 - Tiling {5,3,4} of hyperbolic 3D space
@@ -146,14 +153,14 @@ An alternative model for proving weak universality.
 
 ### Components
 
-| Component     | Description                                  |
-|---------------|----------------------------------------------|
-| Tracks        | Directed edges for particle movement         |
-| Fixed switch  | Always routes particle to same output        |
-| Flip-flop     | Alternates output direction each traversal   |
-| Memory switch | Remembers last direction, uses it next time  |
-| Crossing      | Two tracks cross without interaction         |
-| Station       | Entry/exit points for particles              |
+| Component     | Description                                 |
+| ------------- | ------------------------------------------- |
+| Tracks        | Directed edges for particle movement        |
+| Fixed switch  | Always routes particle to same output       |
+| Flip-flop     | Alternates output direction each traversal  |
+| Memory switch | Remembers last direction, uses it next time |
+| Crossing      | Two tracks cross without interaction        |
+| Station       | Entry/exit points for particles             |
 
 ### How It Proves Universality
 
@@ -165,6 +172,7 @@ An alternative model for proving weak universality.
 ### Implementation in Hyperbolic CA
 
 The switches and crossings can be implemented using:
+
 - Local state patterns in cells
 - Signal propagation through the Fibonacci tree
 - State transitions encoding switch behavior
@@ -174,5 +182,5 @@ The switches and crossings can be implemented using:
 - **Weak**: Requires infinite initial configuration (encoded program)
 - **Strong**: Works from finite configuration (self-contained)
 
-Railway circuit constructions typically prove weak universality.
-Strong universality requires additional self-replication mechanisms.
+Railway circuit constructions typically prove weak universality. Strong
+universality requires additional self-replication mechanisms.

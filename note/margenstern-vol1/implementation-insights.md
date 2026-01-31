@@ -42,9 +42,9 @@ about "the spanning tree and the language of the splitting".
 
 ```typescript
 interface TileCoord {
-  sector: number         // "root wedge" id
-  path: Digit[]          // "which child kind did we take?"
-  orientation?: number   // how edges/sides are numbered at that tile
+  sector: number // "root wedge" id
+  path: Digit[] // "which child kind did we take?"
+  orientation?: number // how edges/sides are numbered at that tile
 }
 ```
 
@@ -63,11 +63,13 @@ and non-branchy.
 ### Code Impact
 
 Without preferred son:
+
 ```
 neighbor() needs case analysis on many tile types
 ```
 
 With preferred son:
+
 ```
 neighbor() is mostly a few small rewrite patterns plus fallback to parent-level
 ```
@@ -110,7 +112,8 @@ Volume 1 highlights:
 - Expose the right abstractions: tile types, child ordering, sectoring,
   edge numbering
 
-**{7,3} and {5,4} are great because they live in these highlighted families.**
+**{7,3} and {5,4} are great because they live in these highlighted
+families.**
 
 ## 6. Beyond Standard Tilings
 
@@ -157,10 +160,10 @@ complex computation.
 
 Decide early what "neighbor" means:
 
-| Mode            | Definition                   |
-|-----------------|------------------------------|
-| Side-neighbors  | Share an edge (standard)     |
-| Vertex-neighbors| Share a vertex (Moore-style) |
+| Mode             | Definition                   |
+| ---------------- | ---------------------------- |
+| Side-neighbors   | Share an edge (standard)     |
+| Vertex-neighbors | Share a vertex (Moore-style) |
 
 If including vertex-neighbors, need extra adjacency rules beyond
 side-walking.
@@ -194,14 +197,14 @@ interface TilingSpec {
 
 ```typescript
 interface TileCoord {
-  sector: number      // which root wedge
-  path: number[]      // digits in "language of splitting"
+  sector: number // which root wedge
+  path: number[] // digits in "language of splitting"
   orientation?: number // optional but usually worth it
 }
 ```
 
-The `orientation` field ensures "move across side k" is stable regardless
-of how you arrived at the tile.
+The `orientation` field ensures "move across side k" is stable
+regardless of how you arrived at the tile.
 
 ### C) Core Operations
 
@@ -247,13 +250,13 @@ This pattern handles all cases with minimal branching.
 
 ## Summary: What Volume 1 Provides
 
-| Concept                  | Implementation Value                    |
-|--------------------------|-----------------------------------------|
-| Spanning tree + linking  | Core data structure design              |
-| Language of splitting    | Coordinate validation, enumeration      |
-| Preferred son property   | Fast, uniform neighbor operations       |
-| General {p,q} section    | Generic construction pipeline           |
-| {p,3}, {p,4} families    | First targets, clean test cases         |
-| Fibonacci structures     | Regular trees for stress testing        |
-| Dual graph recovery      | Neighbor algorithm template             |
-| Moore neighborhood note  | API design decision point               |
+| Concept                 | Implementation Value               |
+| ----------------------- | ---------------------------------- |
+| Spanning tree + linking | Core data structure design         |
+| Language of splitting   | Coordinate validation, enumeration |
+| Preferred son property  | Fast, uniform neighbor operations  |
+| General {p,q} section   | Generic construction pipeline      |
+| {p,3}, {p,4} families   | First targets, clean test cases    |
+| Fibonacci structures    | Regular trees for stress testing   |
+| Dual graph recovery     | Neighbor algorithm template        |
+| Moore neighborhood note | API design decision point          |
