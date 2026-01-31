@@ -1,5 +1,6 @@
 import type { Tessellation } from '@/tessellation/types'
 import type { Tile as DynamicTile } from '@/tessellation/dynamic'
+import type { Point } from '@/form/point'
 import type { PolygonNode } from './scene'
 import { createPolygon } from './scene'
 
@@ -17,6 +18,8 @@ export interface TileStyleOptions {
   saturationDecay?: number
   /** Lightness decrease per depth level */
   lightnessDecay?: number
+  /** View center for distance-based coloring (for dynamic tiles) */
+  viewCenter?: Point
 }
 
 const DEFAULT_HUE = 220
@@ -121,8 +124,35 @@ export function tessellationToNodes(
 }
 
 /**
+ * Compute hyperbolic distance between two points using Minkowski inner product.
+ */
+function hyperbolicDistance(a: Point, b: Point): number {
+  const ax = a[0] ?? 0
+  const ay = a[1] ?? 0
+  const at = a[2] ?? 1
+  const bx = b[0] ?? 0
+  const by = b[1] ?? 0
+  const bt = b[2] ?? 1
+
+  // Minkowski inner product: <a,b> = a.x*b.x + a.y*b.y - a.t*b.t
+  // For points on hyperboloid: cosh(d) = -<a,b>
+  const innerProduct = ax * bx + ay * by - at * bt
+  const clamped = Math.max(1, -innerProduct)
+  return Math.acosh(clamped)
+}
+
+/**
+ * Convert hyperbolic distance to a depth level for coloring.
+ * Uses a scale factor to map continuous distance to discrete depth steps.
+ */
+function distanceToDepth(distance: number, scale: number = 0.8): number {
+  return Math.floor(distance / scale)
+}
+
+/**
  * Convert dynamic tiles to polygon nodes.
  * Used for rendering dynamically generated tessellations.
+ * When viewCenter is provided, coloring is based on distance from viewCenter.
  */
 export function dynamicTilesToNodes(
   tiles: DynamicTile[],
@@ -134,13 +164,24 @@ export function dynamicTilesToNodes(
     baseLightness = DEFAULT_BASE_LIGHTNESS,
     saturationDecay = DEFAULT_SATURATION_DECAY,
     lightnessDecay = DEFAULT_LIGHTNESS_DECAY,
+    viewCenter,
   } = options
 
   const nodes: PolygonNode[] = []
 
   for (const tile of tiles) {
+    // Use distance-based depth when viewCenter is provided
+    // This gives correct coloring when panning through the space
+    let visualDepth: number
+    if (viewCenter) {
+      const dist = hyperbolicDistance(viewCenter, tile.center)
+      visualDepth = distanceToDepth(dist)
+    } else {
+      visualDepth = tile.depth
+    }
+
     const fillColor = depthFillColor(
-      tile.depth,
+      visualDepth,
       hue,
       baseSaturation,
       baseLightness,
@@ -148,7 +189,7 @@ export function dynamicTilesToNodes(
       lightnessDecay,
     )
     const strokeColor = depthStrokeColor(
-      tile.depth,
+      visualDepth,
       hue,
       baseLightness,
       lightnessDecay,
@@ -158,7 +199,7 @@ export function dynamicTilesToNodes(
       fillColor,
       strokeColor,
       strokeWidth: 1,
-      depth: tile.depth,
+      depth: visualDepth,
       focusable: true,
       name: `Tile ${tile.id}`,
       center: tile.center,

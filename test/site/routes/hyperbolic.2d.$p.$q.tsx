@@ -20,6 +20,26 @@ import {
   hitTest,
 } from '@cluesurf/hive/focus'
 
+/**
+ * Extract view center from a Lorentz transform matrix.
+ * The view center is the point in original space that maps to the screen center.
+ * For Lorentz transform T, this is T^(-1) * origin = (-T[6], -T[7], T[8]) normalized.
+ */
+function getViewCenter(transform: number[]): [number, number, number] {
+  const t6 = transform[6] ?? 0
+  const t7 = transform[7] ?? 0
+  const t8 = transform[8] ?? 1
+  // Normalize the point on the hyperboloid
+  const x = -t6
+  const y = -t7
+  const t = t8
+  const norm = Math.sqrt(t * t - x * x - y * y)
+  if (norm > 0) {
+    return [x / norm * Math.sign(t), y / norm * Math.sign(t), Math.abs(t) / norm]
+  }
+  return [0, 0, 1]
+}
+
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
     { title: `{${data?.p},${data?.q}} Hyperbolic Tiling` },
@@ -98,8 +118,10 @@ export default function HyperbolicTiling() {
     setTotalTiles(tessellation.getTileCount())
 
     // Convert to scene nodes and render
+    // Pass viewCenter for distance-based coloring (tiles nearer to view center are brighter)
     const geometry = tessellation.getGeometry()
-    const nodes = dynamicTilesToNodes(visibleTiles, { hue: 220 })
+    const viewCenter = view ? getViewCenter(view.getTransform()) : [0, 0, 1] as [number, number, number]
+    const nodes = dynamicTilesToNodes(visibleTiles, { hue: 220, viewCenter })
     const scene = createScene(geometry, nodes)
     setupParentReferences(scene)
 
@@ -199,7 +221,8 @@ export default function HyperbolicTiling() {
     // Create initial scene for focus manager
     const initialTiles = tessellationRef.current.getVisibleTiles()
     const geometry = tessellationRef.current.getGeometry()
-    const initialNodes = dynamicTilesToNodes(initialTiles, { hue: 220 })
+    const initialViewCenter: [number, number, number] = [0, 0, 1]
+    const initialNodes = dynamicTilesToNodes(initialTiles, { hue: 220, viewCenter: initialViewCenter })
     const initialScene = createScene(geometry, initialNodes)
     setupParentReferences(initialScene)
 
@@ -229,7 +252,8 @@ export default function HyperbolicTiling() {
       // Build current scene for hit testing
       const visibleTiles = tessellation.getVisibleTiles()
       const geometry = tessellation.getGeometry()
-      const nodes = dynamicTilesToNodes(visibleTiles, { hue: 220 })
+      const clickViewCenter = viewRef.current ? getViewCenter(viewRef.current.getTransform()) : [0, 0, 1] as [number, number, number]
+      const nodes = dynamicTilesToNodes(visibleTiles, { hue: 220, viewCenter: clickViewCenter })
       const scene = createScene(geometry, nodes)
       setupParentReferences(scene)
       focusManager.setScene(scene)
