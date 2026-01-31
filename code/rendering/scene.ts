@@ -292,6 +292,26 @@ export function createGroup(
 }
 
 /**
+ * Create an empty scene.
+ */
+export function createScene(geometry: Geometry, nodes: AnyNode[] = []): Scene {
+  return {
+    nodes,
+    geometry,
+  }
+}
+
+/**
+ * Add nodes to a scene. Returns a new scene with the added nodes.
+ */
+export function addNodes(scene: Scene, nodes: AnyNode[]): Scene {
+  return {
+    ...scene,
+    nodes: [...scene.nodes, ...nodes],
+  }
+}
+
+/**
  * Flatten a scene graph into a sorted list of nodes for rendering.
  */
 export function flattenScene(scene: Scene): AnyNode[] {

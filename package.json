@@ -7,8 +7,8 @@
     "make": "rm -rf host && mkdir -p host && pnpm exec tsc --project tsconfig.json --pretty --noEmitOnError false && pnpm exec tsc-alias --project tsconfig.json && cp package.json host",
     "scan": "rm -rf host && concurrently --kill-others \"tsc -w\" \"tsc-alias -w\"",
     "lint": "eslint --ext .ts ./make --fix",
-    "test:make": "npx tsx test/make.ts",
-    "test": "npx tsx --no-warnings=ExperimentalWarning test/index.ts",
+    "test": "npx vitest run",
+    "test:site": "cd test/site && pnpm work",
     "host": "pnpm make && npm publish --access=public"
   },
   "prettier": "@cluesurf/wash/flow.json",

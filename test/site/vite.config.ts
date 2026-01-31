@@ -21,7 +21,10 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname),
+      // Map @/ to @cluesurf/hive/ for library internal imports
+      '@/': path.resolve(__dirname, '../../code') + '/',
+      // Library package imports
+      '@cluesurf/hive/': path.resolve(__dirname, '../../code') + '/',
       '@cluesurf/hive': path.resolve(__dirname, '../../code'),
     },
   },

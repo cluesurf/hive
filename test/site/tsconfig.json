@@ -16,7 +16,7 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"],
+      "@/*": ["../../code/*"],
       "@cluesurf/hive": ["../../code"],
       "@cluesurf/hive/*": ["../../code/*"]
     },
