@@ -37,7 +37,7 @@ export default function HyperbolicTiling() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<Canvas2DRenderer | null>(null)
   const [zoom, setZoom] = useState(0.9)
-  const [depth, setDepth] = useState(5)
+  const [maxTiles, setMaxTiles] = useState(2000)
 
   const drawTiling = useCallback(() => {
     const canvas = canvasRef.current
@@ -67,7 +67,8 @@ export default function HyperbolicTiling() {
     const tessellation = new Hyperbolic2DTessellation({
       p,
       q,
-      maxDepth: depth,
+      maxDepth: 50, // High depth limit, let maxTiles control
+      maxTiles,
     })
     const result = tessellation.generate()
     const geometry = tessellation.getGeometry()
@@ -79,9 +80,9 @@ export default function HyperbolicTiling() {
 
     renderer.drawInfo([
       `{${p},${q}} tiling`,
-      `${result.tiles.size} tiles (depth ${depth})`,
+      `${result.tiles.size} tiles`,
     ])
-  }, [p, q, isHyperbolic, error, zoom, depth])
+  }, [p, q, isHyperbolic, error, zoom, maxTiles])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -127,16 +128,17 @@ export default function HyperbolicTiling() {
         </div>
         <div className="flex items-center gap-6">
           <label className="flex items-center gap-2">
-            <span className="text-gray-400 text-sm">Depth:</span>
+            <span className="text-gray-400 text-sm">Tiles:</span>
             <input
               type="range"
-              min="1"
-              max="8"
-              value={depth}
-              onChange={e => setDepth(parseInt(e.target.value, 10))}
+              min="100"
+              max="5000"
+              step="100"
+              value={maxTiles}
+              onChange={e => setMaxTiles(parseInt(e.target.value, 10))}
               className="w-24"
             />
-            <span className="text-sm w-4">{depth}</span>
+            <span className="text-sm w-12">{maxTiles}</span>
           </label>
           <label className="flex items-center gap-2">
             <span className="text-gray-400 text-sm">Zoom:</span>

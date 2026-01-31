@@ -222,21 +222,16 @@ export class Canvas2DRenderer {
   private renderPolygon(node: PolygonNode, scene: Scene): void {
     const geometryType = scene.geometry.getType()
     const canvasPoints: [number, number][] = []
-    let anyVisible = false
 
     for (const vertex of node.vertices) {
       const canvasPoint = this.toCanvas(vertex, geometryType)
       if (canvasPoint) {
         canvasPoints.push(canvasPoint)
-        anyVisible = true
-      } else {
-        // For now, skip polygons with any vertices outside
-        // TODO: Implement proper clipping
-        return
       }
+      // Skip vertices that are too far outside, but continue with polygon
     }
 
-    if (!anyVisible || canvasPoints.length < 3) return
+    if (canvasPoints.length < 3) return
 
     const first = canvasPoints[0]
     if (!first) return

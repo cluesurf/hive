@@ -38,6 +38,9 @@ export interface TessellationConfig {
 
   /** Maximum depth to generate (number of steps from center) */
   maxDepth: number
+
+  /** Maximum number of tiles to generate (optional, overrides depth if reached first) */
+  maxTiles?: number
 }
 
 /**

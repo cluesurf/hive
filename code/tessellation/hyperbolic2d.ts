@@ -138,11 +138,13 @@ export class Hyperbolic2DTessellation {
   }
 
   /**
-   * Generate tiles recursively starting from the central tile.
+   * Generate tiles using breadth-first traversal starting from the central tile.
    */
   generate(): Tessellation {
     this.tiles.clear()
     this.visited.clear()
+
+    const maxTiles = this.config.maxTiles ?? 10000
 
     // Create central tile at origin
     const centralVertices = this.generateCentralPolygonVertices()
@@ -160,8 +162,15 @@ export class Hyperbolic2DTessellation {
     this.tiles.set(centralTile.id, centralTile)
     this.visited.add(centralTile.id)
 
-    // Generate neighbors recursively
-    this.generateNeighbors(centralTile)
+    // Breadth-first generation for uniform coverage
+    const queue: Tile[] = [centralTile]
+
+    while (queue.length > 0 && this.tiles.size < maxTiles) {
+      const tile = queue.shift()!
+      if (tile.depth >= this.config.maxDepth) continue
+
+      this.generateNeighborsForTile(tile, queue, maxTiles)
+    }
 
     return {
       config: this.config,
@@ -173,14 +182,18 @@ export class Hyperbolic2DTessellation {
   }
 
   /**
-   * Generate neighboring tiles by reflecting across each edge.
+   * Generate neighboring tiles for a single tile by reflecting across each edge.
    */
-  private generateNeighbors(tile: Tile): void {
-    if (tile.depth >= this.config.maxDepth) return
-
+  private generateNeighborsForTile(
+    tile: Tile,
+    queue: Tile[],
+    maxTiles: number,
+  ): void {
     const { p } = this.config
 
     for (let i = 0; i < p; i++) {
+      if (this.tiles.size >= maxTiles) return
+
       const v1 = tile.vertices[i]
       const v2 = tile.vertices[(i + 1) % p]
 
@@ -253,8 +266,8 @@ export class Hyperbolic2DTessellation {
       this.tiles.set(neighborId, neighborTile)
       this.visited.add(neighborId)
 
-      // Recursively generate neighbors
-      this.generateNeighbors(neighborTile)
+      // Add to queue for BFS
+      queue.push(neighborTile)
     }
   }
 
