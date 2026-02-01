@@ -19,9 +19,20 @@ visualization.
 | Coordinate systems       | `coordinate-systems.md`    |
 | Design TODOs             | `design-todos.md`          |
 | Tessellation generation  | `tessellation.md`          |
-| Kaleidoscope system      | `kaleidoscope.md`          |
-| Fractal system           | `fractals.md`              |
-| Hyperbolic honeycombs    | `hyperbolic-honeycombs.md` |
+| Kaleidoscope system      | `kaleidoscope.md`                  |
+| Fractal system           | `fractals.md`                      |
+| Hyperbolic honeycombs    | `hyperbolic-honeycombs.md`         |
+| 3D honeycomb theory      | `honeycomb-3d-theory.md`           |
+| 3D honeycomb impl plan   | `honeycomb-3d-implementation-plan.md` |
+
+## 3D Hyperbolic Honeycombs
+
+| Topic                    | Document                              |
+| ------------------------ | ------------------------------------- |
+| Conceptual overview      | `hyperbolic-honeycombs.md`            |
+| Mathematical theory      | `honeycomb-3d-theory.md`              |
+| Implementation plan      | `honeycomb-3d-implementation-plan.md` |
+| Reference codebase       | `../base/Hyperbolic-Honeycombs-main/` |
 
 ## Fractal Animation
 
