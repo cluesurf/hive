@@ -146,15 +146,42 @@ float dSegments(vec4 p, float r) {
   return min(min(dA, dB), min(dC, dD));
 }
 
+// Mobius addition: a ⊕ b in Poincare ball
+vec3 mobiusAdd(vec3 a, vec3 b) {
+  float a2 = dot(a, a);
+  float b2 = dot(b, b);
+  float ab = dot(a, b);
+  float denom = 1.0 + 2.0 * ab + a2 * b2;
+  if (abs(denom) < 1e-10) return a;
+  float coefA = (1.0 + 2.0 * ab + b2) / denom;
+  float coefB = (1.0 - a2) / denom;
+  return coefA * a + coefB * b;
+}
+
+// Transform point from view space to honeycomb space
+vec3 toHoneycombSpace(vec3 p) {
+  // Apply inverse camera translation to map view-space points to honeycomb space
+  // If camera is at position 'a' in the honeycomb, a view-space point 'p'
+  // corresponds to (-a) ⊕ p in the honeycomb's coordinate system
+  return mobiusAdd(-cameraPos, p);
+}
+
+// Distance estimator that works in honeycomb space
 float DE(vec3 p) {
   float r = length(p);
-  if (r >= 0.999) return 0.01; // Near boundary of Poincare ball
+  if (r >= 0.998) return 0.01;
   vec4 q = vec4(2.0 * p, 1.0 + r * r) / (1.0 - r * r);
   bool found = fold4d(q);
-  if (!found) return 0.1; // Far away, couldn't fold - treat as empty space
+  if (!found) return 0.1;
   float dV = dVertex(q, r);
   float dS = dSegments(q, r);
   return min(dV, dS);
+}
+
+// Distance estimator with coordinate transform
+float DEtransformed(vec3 p) {
+  vec3 pH = toHoneycombSpace(p);
+  return DE(pH);
 }
 
 int closestEdge(vec4 p, float r) {
@@ -172,9 +199,9 @@ int closestEdge(vec4 p, float r) {
 vec3 estimateNormal(vec3 p) {
   float eps = 0.0001;
   return normalize(vec3(
-    DE(p + vec3(eps, 0, 0)) - DE(p - vec3(eps, 0, 0)),
-    DE(p + vec3(0, eps, 0)) - DE(p - vec3(0, eps, 0)),
-    DE(p + vec3(0, 0, eps)) - DE(p - vec3(0, 0, eps))
+    DEtransformed(p + vec3(eps, 0, 0)) - DEtransformed(p - vec3(eps, 0, 0)),
+    DEtransformed(p + vec3(0, eps, 0)) - DEtransformed(p - vec3(0, eps, 0)),
+    DEtransformed(p + vec3(0, 0, eps)) - DEtransformed(p - vec3(0, 0, eps))
   ));
 }
 
@@ -182,15 +209,16 @@ float calcAO(vec3 pos, vec3 nor) {
   float occ = 0.0;
   float h1 = 0.02;
   float h2 = 0.08;
-  occ += (h1 - DE(pos + h1 * nor));
-  occ += (h2 - DE(pos + h2 * nor)) * 0.5;
+  occ += (h1 - DEtransformed(pos + h1 * nor));
+  occ += (h2 - DEtransformed(pos + h2 * nor)) * 0.5;
   return clamp(1.0 - 2.5 * occ, 0.0, 1.0);
 }
 
 vec3 getColor(vec3 pos) {
-  float r = length(pos);
-  if (r >= 0.999) return backgroundColor;
-  vec4 q = vec4(2.0 * pos, 1.0 + r * r) / (1.0 - r * r);
+  vec3 pH = toHoneycombSpace(pos);
+  float r = length(pH);
+  if (r >= 0.998) return backgroundColor;
+  vec4 q = vec4(2.0 * pH, 1.0 + r * r) / (1.0 - r * r);
   bool found = fold4d(q);
   if (!found) return backgroundColor;
   float dV = dVertex(q, r);
@@ -209,15 +237,16 @@ void main() {
   vec3 right = normalize(cross(cameraDir, cameraUp));
   vec3 up = cross(right, cameraDir);
   vec3 rayDir = normalize(cameraDir + uv.x * right + uv.y * up);
-  vec3 rayOrigin = cameraPos;
 
+  // Ray march from origin in view space
+  // Camera is always at origin, honeycomb is transformed around it
   float t = 0.0;
   float minDist = 1e10;
-  vec3 hitPos = rayOrigin;
+  vec3 hitPos = vec3(0.0);
 
   for (int i = 0; i < 120; i++) {
-    vec3 p = rayOrigin + t * rayDir;
-    float d = DE(p);
+    vec3 p = t * rayDir;
+    float d = DEtransformed(p);
     if (d < minDist) { minDist = d; hitPos = p; }
     if (d < 0.001) { hitPos = p; break; }
     t += d;
@@ -228,7 +257,7 @@ void main() {
   if (minDist < 0.001) {
     vec3 normal = estimateNormal(hitPos);
     vec3 baseColor = getColor(hitPos);
-    vec3 viewDir = normalize(cameraPos - hitPos);
+    vec3 viewDir = normalize(-hitPos);
     float dist = length(hitPos);
 
     // Main light from upper right
@@ -250,31 +279,28 @@ void main() {
     // Ambient occlusion
     float ao = calcAO(hitPos, normal);
 
-    // Combine lighting - keep it bright
+    // Combine lighting
     float amb = 0.3;
     float diffuse = diff1 * 0.6 + diff2;
     color = baseColor * (amb + diffuse) * (0.6 + ao * 0.4);
     color += vec3(1.0) * spec * 0.25;
     color += baseColor * rim;
 
-    // Layered depth fog - gradual darkening in bands
-    // Creates subtle "shells" of increasing haze
+    // Layered depth fog based on view-space distance
     float layer1 = smoothstep(0.2, 0.4, dist) * 0.15;
     float layer2 = smoothstep(0.4, 0.6, dist) * 0.15;
     float layer3 = smoothstep(0.6, 0.8, dist) * 0.20;
     float layer4 = smoothstep(0.8, 0.95, dist) * 0.25;
     float totalFog = layer1 + layer2 + layer3 + layer4;
 
-    // Also darken slightly with distance for depth cue
     float depthDarken = 1.0 - dist * 0.3;
     color *= depthDarken;
-
-    // Apply layered fog
     color = mix(color, backgroundColor, totalFog);
 
     if (highlightIntensity > 0.0) {
-      float r = length(hitPos);
-      vec4 q = vec4(2.0 * hitPos, 1.0 + r * r) / (1.0 - r * r);
+      vec3 pH = toHoneycombSpace(hitPos);
+      float r = length(pH);
+      vec4 q = vec4(2.0 * pH, 1.0 + r * r) / (1.0 - r * r);
       if (distance(q, highlightCell) < 0.5) {
         color = mix(color, vec3(1.0, 0.9, 0.7), highlightIntensity);
       }

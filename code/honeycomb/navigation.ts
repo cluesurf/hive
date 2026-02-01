@@ -109,11 +109,13 @@ export function moveCamera(
   ]
   const newPos = mobiusAdd(pos, translation)
 
-  // Clamp to stay inside ball
-  const len = Math.sqrt(
-    newPos[0] ** 2 + newPos[1] ** 2 + newPos[2] ** 2,
-  )
-  if (len < maxRadius) {
+  // Always update position - clamp to ball boundary if needed for numerical stability
+  let len = Math.sqrt(newPos[0] ** 2 + newPos[1] ** 2 + newPos[2] ** 2)
+  if (len > 0.999) {
+    // Normalize to stay just inside ball boundary
+    const scale = 0.999 / len
+    state.position.set(newPos[0] * scale, newPos[1] * scale, newPos[2] * scale)
+  } else {
     state.position.set(newPos[0], newPos[1], newPos[2])
   }
 }

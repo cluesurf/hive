@@ -117,7 +117,7 @@ export default function HyperbolicHoneycombThreeJS() {
         if (keysPressed.has('d') || keysPressed.has('arrowright')) strafe += 1
 
         if (forward !== 0 || strafe !== 0) {
-          moveCamera(cameraState, forward, strafe, 0.02, 0.95)
+          moveCamera(cameraState, forward, strafe, 0.03)
           syncCameraToMaterial(cameraState, material)
           needsRender = true
           render()
@@ -180,8 +180,9 @@ export default function HyperbolicHoneycombThreeJS() {
 
     function onWheel(e: WheelEvent) {
       e.preventDefault()
-      const delta = -Math.sign(e.deltaY) * 0.5
-      moveCamera(cameraState, delta, 0, 0.04, 0.95)
+      // Move through hyperbolic space - infinite travel
+      const delta = -Math.sign(e.deltaY)
+      moveCamera(cameraState, delta, 0, 0.1)
       syncCameraToMaterial(cameraState, material)
       needsRender = true
       render()
