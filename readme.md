@@ -60,7 +60,7 @@ This is phase 1 of the vibe coding UI, 2D demo. _(Test with
 ```
 
 <p align='center'>
-  <img src='https://github.com/cluesurf/hive/blob/make/view/vibe-phase-2.png?raw=true'/>
+  <img src='https://github.com/cluesurf/hive/blob/make/view/vibe-phase-2b.png?raw=true'/>
 </p>
 
 ## Digging In
