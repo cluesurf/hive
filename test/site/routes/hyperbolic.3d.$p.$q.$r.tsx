@@ -12,7 +12,6 @@ import {
   rotateCamera,
   moveCamera,
   resetCamera,
-  enumerateCells,
 } from '../../../code/honeycomb'
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
@@ -61,13 +60,11 @@ export default function HyperbolicHoneycombThreeJS() {
     // Emerald 600 background for contrast
     const emerald600 = new THREE.Color(5 / 255, 150 / 255, 105 / 255)
 
-    // Enumerate cells to depth N using BFS
-    const maxCellDepth = 4
-    console.log(`Enumerating cells for {${p},${q},${r}} to depth ${maxCellDepth}...`)
-    const cellData = enumerateCells(p, q, r, maxCellDepth)
-    console.log(`Enumerated ${cellData.count} cells`)
+    // Control hyperbolic distance cutoff (cellCount * 0.3 = max hyperbolic distance)
+    // Higher values = more geometry visible (20 * 0.3 = 6.0 hyperbolic distance)
+    const visibleLayers = 20
 
-    // Create shader material with precomputed cells
+    // Create shader material with hyperbolic distance cutoff
     const material = createHoneycombMaterialV2({
       p,
       q,
@@ -77,7 +74,6 @@ export default function HyperbolicHoneycombThreeJS() {
       vertexSize: 0,
       edgeSize: 0.05,
       maxIterations: 150,
-      maxCellDepth,
       edgeColors: {
         a: zinc200,
         b: zinc300,
@@ -86,9 +82,10 @@ export default function HyperbolicHoneycombThreeJS() {
       },
       vertexColor: zinc200,
       backgroundColor: emerald600,
-      cellMatrices: cellData.matrices,
-      cellDepths: cellData.depths,
     })
+
+    // Set cellCount to control hyperbolic distance cutoff
+    material.uniforms.cellCount.value = visibleLayers
 
     // Full-screen quad
     const geometry = new THREE.PlaneGeometry(2, 2)
@@ -237,7 +234,7 @@ export default function HyperbolicHoneycombThreeJS() {
     container.addEventListener('wheel', onWheel, { passive: false })
     window.addEventListener('resize', onResize)
 
-    setInfo(`${honeycombName(p, q, r)} (${cellData.count} cells)`)
+    setInfo(`${honeycombName(p, q, r)} (${visibleLayers} layers)`)
 
     return () => {
       stopMovementLoop()

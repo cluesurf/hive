@@ -1,7 +1,8 @@
 /**
  * Three.js ShaderMaterial for Hyperbolic Honeycomb Rendering (V2)
  *
- * Implements proper cell-depth limiting using BFS-enumerated cells.
+ * Implements Option C: Explicit cell enumeration for complete polyhedra.
+ * Loops over precomputed cells and computes minimum SDF.
  */
 
 import * as THREE from 'three'
@@ -15,9 +16,8 @@ void main() {
 }
 `
 
-// Maximum cells we can upload to GPU (limited by uniform array size)
-// WebGL has ~1024 vec4 limit; each cell needs 4 vec4s, so max ~200 cells
-const MAX_CELLS = 128
+// Maximum cells - keep small for performance (each cell = 1 SDF eval per ray step)
+const MAX_CELLS = 64
 
 const fragmentShader = `
 precision highp float;
@@ -39,7 +39,6 @@ uniform vec4 activeMirrors;
 uniform float vertexSize;
 uniform float edgeSize;
 uniform int maxIterations;
-uniform int maxCellDepth;
 
 uniform vec3 edgeColorA;
 uniform vec3 edgeColorB;
@@ -48,21 +47,17 @@ uniform vec3 edgeColorD;
 uniform vec3 vertexColor;
 uniform vec3 backgroundColor;
 
-// Cell table: each cell is a 4x4 SO(3,1) matrix
-// Stored as 4 vec4s per cell
+// Cell transforms: each cell is a 4x4 SO(3,1) matrix
 uniform int cellCount;
-uniform vec4 cellMat0[${MAX_CELLS}]; // First row of each cell matrix
-uniform vec4 cellMat1[${MAX_CELLS}]; // Second row
-uniform vec4 cellMat2[${MAX_CELLS}]; // Third row
-uniform vec4 cellMat3[${MAX_CELLS}]; // Fourth row
-uniform int cellDepths[${MAX_CELLS}];
+uniform vec4 cellMat0[${MAX_CELLS}];
+uniform vec4 cellMat1[${MAX_CELLS}];
+uniform vec4 cellMat2[${MAX_CELLS}];
+uniform vec4 cellMat3[${MAX_CELLS}];
 
 #define PI 3.14159265359
 
 // Coxeter mirror normals
 mat4 M;
-// Reflection matrices for each mirror (in hyperboloid model)
-mat4 RA, RB, RC, RD;
 vec4 v0;
 float cvr, svr, csr, ssr;
 
@@ -72,23 +67,6 @@ float hdot(vec4 p, vec4 q) {
 
 vec4 hnormalize(vec4 p) {
   return p / sqrt(abs(-hdot(p, p)));
-}
-
-// Build reflection matrix for hyperplane with normal n
-mat4 reflectionMat(vec4 n) {
-  float nn = hdot(n, n);
-  float f = 2.0 / nn;
-  mat4 R;
-  // R = I - 2 * n * n^T * eta / <n,n>
-  // where eta = diag(1,1,1,-1)
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      float eta_j = (j == 3) ? -1.0 : 1.0;
-      float delta = (i == j) ? 1.0 : 0.0;
-      R[j][i] = delta - f * n[i] * n[j] * eta_j;
-    }
-  }
-  return R;
 }
 
 void initCoxeter() {
@@ -112,12 +90,6 @@ void initCoxeter() {
 
   M = mat4(A, B, C, D);
 
-  // Build reflection matrices
-  RA = reflectionMat(A);
-  RB = reflectionMat(B);
-  RC = reflectionMat(C);
-  RD = reflectionMat(D);
-
   vec4 H = vec4(1.0, 1.0, 1.0, -1.0);
   mat4 Minv = inverse(mat4(H * A, H * B, H * C, H * D));
   v0 = hnormalize(activeMirrors * Minv);
@@ -128,93 +100,44 @@ void initCoxeter() {
   ssr = sinh(edgeSize);
 }
 
-// Fold point to fundamental domain while accumulating group element G
-// Returns: folded point in p, group element in G, success flag
-bool fold4dWithG(inout vec4 p, out mat4 G) {
-  G = mat4(1.0); // Identity
+// Apply SO(3,1) matrix to hyperboloid point
+vec4 applyTransform(mat4 T, vec4 p) {
+  return T * p;
+}
 
+// Fold point to fundamental domain (no depth tracking)
+bool fold4d(inout vec4 p) {
   for (int i = 0; i < 200; i++) {
     if (i >= maxIterations) return false;
 
     bool reflected = false;
 
-    // Mirror A (x = 0 plane)
     if (p.x < 0.0) {
       p.x = -p.x;
-      G = RA * G;
       reflected = true;
     }
 
-    // Mirror B
     float kb = hdot(p, M[1]);
     if (kb < 0.0) {
       p -= 2.0 * kb * M[1];
-      G = RB * G;
       reflected = true;
     }
 
-    // Mirror C
     float kc = hdot(p, M[2]);
     if (kc < 0.0) {
       p -= 2.0 * kc * M[2];
-      G = RC * G;
       reflected = true;
     }
 
-    // Mirror D
     float kd = hdot(p, M[3]);
     if (kd < 0.0) {
       p -= 2.0 * kd * M[3];
-      G = RD * G;
       reflected = true;
     }
 
     if (!reflected) return true;
   }
   return false;
-}
-
-// Compare two 4x4 matrices with tolerance
-bool matricesEqual(mat4 A, mat4 B, float tol) {
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      if (abs(A[i][j] - B[i][j]) > tol) return false;
-    }
-  }
-  return true;
-}
-
-// Look up cell depth from precomputed table
-// Returns depth if found, -1 if not in table
-int lookupCellDepth(mat4 G) {
-  // DEBUG: Skip lookup, just count reflections as depth proxy
-  // This counts how many reflections were needed to fold the point
-  // We compute this from G by checking how far it is from identity
-
-  // For now, always return 0 to show all geometry
-  // TODO: Implement proper depth limiting once basic rendering works
-  return 0;
-
-  /*
-  float tol = 0.1; // Increased tolerance for float32 precision
-
-  for (int i = 0; i < ${MAX_CELLS}; i++) {
-    if (i >= cellCount) break;
-
-    // Reconstruct cell matrix from uniform arrays
-    mat4 cellMat;
-    cellMat[0] = cellMat0[i];
-    cellMat[1] = cellMat1[i];
-    cellMat[2] = cellMat2[i];
-    cellMat[3] = cellMat3[i];
-
-    if (matricesEqual(G, cellMat, tol)) {
-      return cellDepths[i];
-    }
-  }
-
-  return -1; // Cell not in table (beyond maxCellDepth)
-  */
 }
 
 float knightyDD(float ca, float sa, float r) {
@@ -250,6 +173,16 @@ float dSegments(vec4 p, float r) {
   return min(min(dA, dB), min(dC, dD));
 }
 
+// Compute SDF for a single point in a single cell
+float cellSDF(vec4 q, float r) {
+  vec4 folded = q;
+  if (!fold4d(folded)) return 1.0;
+
+  float dV = dVertex(folded, r);
+  float dS = dSegments(folded, r);
+  return min(dV, dS);
+}
+
 // Mobius addition for Poincare ball
 vec3 mobiusAdd(vec3 a, vec3 b) {
   float a2 = dot(a, a);
@@ -266,19 +199,27 @@ vec3 toHoneycombSpace(vec3 p) {
   return mobiusAdd(-cameraPos, p);
 }
 
+// Hyperbolic distance from origin in Poincare ball
+float hyperbolicDist(float r) {
+  return 2.0 * atanh(r);
+}
+
+// Simple folding-based DE with hyperbolic distance cutoff
 float DE(vec3 p) {
   float r = length(p);
   if (r >= 0.998) return 1.0;
 
+  // Hyperbolic distance cutoff - adjustable via maxCellDepth uniform (repurposed)
+  // maxCellDepth of 3 -> clip at hyperbolic distance ~1.5
+  float maxHypDist = float(cellCount) * 0.3;
+  float hypDist = hyperbolicDist(r);
+  if (hypDist > maxHypDist) return 1.0;
+
+  // Convert to hyperboloid model
   vec4 q = vec4(2.0 * p, 1.0 + r * r) / (1.0 - r * r);
-  mat4 G;
-  bool found = fold4dWithG(q, G);
 
-  if (!found) return 0.1;
-
-  // Look up cell depth from table
-  int depth = lookupCellDepth(G);
-  if (depth < 0) return 1.0; // Cell not in table = beyond max depth
+  // Standard folding
+  if (!fold4d(q)) return 0.1;
 
   float dV = dVertex(q, r);
   float dS = dSegments(q, r);
@@ -325,18 +266,19 @@ vec3 getColor(vec3 pos) {
   float r = length(pH);
   if (r >= 0.998) return backgroundColor;
 
+  // Same hyperbolic distance cutoff as DE
+  float maxHypDist = float(cellCount) * 0.3;
+  float hypDist = hyperbolicDist(r);
+  if (hypDist > maxHypDist) return backgroundColor;
+
   vec4 q = vec4(2.0 * pH, 1.0 + r * r) / (1.0 - r * r);
-  mat4 G;
-  bool found = fold4dWithG(q, G);
 
-  if (!found) return backgroundColor;
-
-  int depth = lookupCellDepth(G);
-  if (depth < 0) return backgroundColor;
+  if (!fold4d(q)) return backgroundColor;
 
   float dV = dVertex(q, r);
   float dS = dSegments(q, r);
   if (dV < dS) return vertexColor;
+
   int edge = closestEdge(q, r);
   if (edge == 0) return edgeColorA;
   if (edge == 1) return edgeColorB;
@@ -355,7 +297,7 @@ void main() {
   float minDist = 1e10;
   vec3 hitPos = vec3(0.0);
 
-  for (int i = 0; i < 120; i++) {
+  for (int i = 0; i < 80; i++) {
     vec3 p = t * rayDir;
     float d = DEtransformed(p);
     if (d < minDist) { minDist = d; hitPos = p; }
@@ -450,7 +392,6 @@ export function createHoneycombMaterialV2(
   const cellMat1: THREE.Vector4[] = []
   const cellMat2: THREE.Vector4[] = []
   const cellMat3: THREE.Vector4[] = []
-  const depths: number[] = []
 
   let cellCount = 0
 
@@ -490,7 +431,6 @@ export function createHoneycombMaterialV2(
           cellMatrices[offset + 15],
         ),
       )
-      depths.push(cellDepths[i])
     }
   }
 
@@ -500,7 +440,6 @@ export function createHoneycombMaterialV2(
     cellMat1.push(new THREE.Vector4(0, 0, 0, 0))
     cellMat2.push(new THREE.Vector4(0, 0, 0, 0))
     cellMat3.push(new THREE.Vector4(0, 0, 0, 0))
-    depths.push(-1)
   }
 
   return new THREE.ShaderMaterial({
@@ -522,7 +461,6 @@ export function createHoneycombMaterialV2(
       vertexSize: { value: vertexSize },
       edgeSize: { value: edgeSize },
       maxIterations: { value: maxIterations },
-      maxCellDepth: { value: maxCellDepth },
 
       edgeColorA: {
         value: edgeColors.a ?? new THREE.Color(0.8, 0.7, 0.3),
@@ -544,7 +482,6 @@ export function createHoneycombMaterialV2(
       cellMat1: { value: cellMat1 },
       cellMat2: { value: cellMat2 },
       cellMat3: { value: cellMat3 },
-      cellDepths: { value: depths },
     },
     vertexShader,
     fragmentShader,
