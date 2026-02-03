@@ -3,15 +3,9 @@ import { useLoaderData, Link } from '@remix-run/react'
 import { useRef, useEffect, useState } from 'react'
 import * as THREE from 'three'
 import {
-  createHoneycombMaterialV2,
-  updateResolutionV2,
-  createCameraState,
-  syncCameraToMaterial,
   isHyperbolicHoneycomb,
   honeycombName,
-  rotateCamera,
-  moveCamera,
-  resetCamera,
+  createHoneycombScene,
 } from '../../../code/honeycomb'
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
@@ -30,7 +24,7 @@ export async function loader({ params }: LoaderFunctionArgs) {
   return { p, q, r, isHyperbolic }
 }
 
-export default function HyperbolicHoneycombThreeJS() {
+export default function HyperbolicHoneycombMesh() {
   const { p, q, r, isHyperbolic } = useLoaderData<typeof loader>()
   const containerRef = useRef<HTMLDivElement>(null)
   const [info, setInfo] = useState('')
@@ -41,214 +35,139 @@ export default function HyperbolicHoneycombThreeJS() {
 
     // Scene setup
     const scene = new THREE.Scene()
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
+    const bgColor = new THREE.Color(5 / 255, 150 / 255, 105 / 255) // Emerald 600
+    scene.background = bgColor
+    // Add fog for depth perception - objects fade into background with distance
+    scene.fog = new THREE.Fog(bgColor, 0.3, 1.2)
+
+    // Perspective camera at origin looking outward
+    const camera = new THREE.PerspectiveCamera(
+      90,
+      container.clientWidth / container.clientHeight,
+      0.001,
+      10,
+    )
+    camera.position.set(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({
-      antialias: false,
-      powerPreference: 'high-performance',
+      antialias: true,
     })
-    renderer.setPixelRatio(1)
+    renderer.setPixelRatio(window.devicePixelRatio)
     renderer.setSize(container.clientWidth, container.clientHeight)
     container.appendChild(renderer.domElement)
 
-    // Zinc beam colors
-    const zinc200 = new THREE.Color(228 / 255, 228 / 255, 231 / 255)
-    const zinc300 = new THREE.Color(212 / 255, 212 / 255, 216 / 255)
-    const zinc400 = new THREE.Color(161 / 255, 161 / 255, 170 / 255)
-    const zinc500 = new THREE.Color(113 / 255, 113 / 255, 122 / 255)
+    // Lighting - setup for good 3D depth perception like Wikipedia
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3)
+    scene.add(ambientLight)
 
-    // Emerald 600 background for contrast
-    const emerald600 = new THREE.Color(5 / 255, 150 / 255, 105 / 255)
+    // Strong point light at camera for interior viewing
+    const pointLight = new THREE.PointLight(0xffffff, 1.5, 2)
+    pointLight.position.set(0, 0, 0)
+    scene.add(pointLight)
 
-    // Control hyperbolic distance cutoff (cellCount * 0.3 = max hyperbolic distance)
-    // Higher values = more geometry visible (20 * 0.3 = 6.0 hyperbolic distance)
-    const visibleLayers = 20
+    // Directional lights from multiple angles for depth shading
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.6)
+    dirLight1.position.set(1, 1, 1)
+    scene.add(dirLight1)
 
-    // Create shader material with hyperbolic distance cutoff
-    const material = createHoneycombMaterialV2({
-      p,
-      q,
-      r,
-      width: container.clientWidth,
-      height: container.clientHeight,
-      vertexSize: 0,
-      edgeSize: 0.05,
-      maxIterations: 150,
-      edgeColors: {
-        a: zinc200,
-        b: zinc300,
-        c: zinc400,
-        d: zinc500,
-      },
-      vertexColor: zinc200,
-      backgroundColor: emerald600,
-    })
+    const dirLight2 = new THREE.DirectionalLight(0xaaaaaa, 0.4)
+    dirLight2.position.set(-1, -0.5, -1)
+    scene.add(dirLight2)
 
-    // Set cellCount to control hyperbolic distance cutoff
-    material.uniforms.cellCount.value = visibleLayers
+    const dirLight3 = new THREE.DirectionalLight(0x888888, 0.3)
+    dirLight3.position.set(0, -1, 0)
+    scene.add(dirLight3)
 
-    // Full-screen quad
-    const geometry = new THREE.PlaneGeometry(2, 2)
-    const mesh = new THREE.Mesh(geometry, material)
-    scene.add(mesh)
+    // Generate honeycomb mesh
+    const maxDepth = 3 // Number of cell layers (each layer = one D reflection)
+    console.log(
+      `Generating mesh for {${p},${q},${r}} with ${maxDepth} cell layers...`,
+    )
 
-    // Camera state
-    const cameraState = createCameraState()
-    syncCameraToMaterial(cameraState, material)
-
-    // Render flag - only render when needed
-    let needsRender = true
-
-    function render() {
-      if (needsRender) {
-        renderer.render(scene, camera)
-        needsRender = false
-      }
+    try {
+      const honeycombGroup = createHoneycombScene(p, q, r, maxDepth)
+      scene.add(honeycombGroup)
+      setInfo(
+        `${honeycombName(p, q, r)} (depth ${maxDepth}, ${
+          honeycombGroup.children.length
+        } meshes)`,
+      )
+    } catch (error) {
+      console.error('Error generating honeycomb:', error)
+      setInfo(`${honeycombName(p, q, r)} (error generating mesh)`)
     }
 
-    // Initial render
-    render()
+    // Camera rotation state
+    let yaw = 0
+    let pitch = 0
+    const euler = new THREE.Euler(0, 0, 0, 'YXZ')
 
-    // Drag state
-    const dragState = {
-      isDragging: false,
-      lastX: 0,
-      lastY: 0,
+    function updateCameraRotation() {
+      euler.set(pitch, yaw, 0, 'YXZ')
+      camera.quaternion.setFromEuler(euler)
     }
 
-    // Keys state for movement
-    const keysPressed = new Set<string>()
-    let movementInterval: number | null = null
+    // Animation loop
+    let animationId: number
 
-    function startMovementLoop() {
-      if (movementInterval) return
-      movementInterval = window.setInterval(() => {
-        let forward = 0
-        let strafe = 0
-        if (keysPressed.has('w') || keysPressed.has('arrowup'))
-          forward += 1
-        if (keysPressed.has('s') || keysPressed.has('arrowdown'))
-          forward -= 1
-        if (keysPressed.has('a') || keysPressed.has('arrowleft'))
-          strafe -= 1
-        if (keysPressed.has('d') || keysPressed.has('arrowright'))
-          strafe += 1
-
-        if (forward !== 0 || strafe !== 0) {
-          moveCamera(cameraState, forward, strafe, 0.03)
-          syncCameraToMaterial(cameraState, material)
-          needsRender = true
-          render()
-        } else {
-          stopMovementLoop()
-        }
-      }, 32)
+    function animate() {
+      animationId = requestAnimationFrame(animate)
+      renderer.render(scene, camera)
     }
 
-    function stopMovementLoop() {
-      if (movementInterval) {
-        clearInterval(movementInterval)
-        movementInterval = null
-      }
-    }
+    animate()
+
+    // Mouse drag controls for looking around
+    let isDragging = false
+    let lastX = 0
+    let lastY = 0
 
     function onMouseDown(e: MouseEvent) {
-      dragState.isDragging = true
-      dragState.lastX = e.clientX
-      dragState.lastY = e.clientY
+      isDragging = true
+      lastX = e.clientX
+      lastY = e.clientY
     }
 
     function onMouseUp() {
-      dragState.isDragging = false
+      isDragging = false
     }
 
     function onMouseMove(e: MouseEvent) {
-      if (!dragState.isDragging) return
+      if (!isDragging) return
 
-      const dx = e.clientX - dragState.lastX
-      const dy = e.clientY - dragState.lastY
-      dragState.lastX = e.clientX
-      dragState.lastY = e.clientY
+      const dx = e.clientX - lastX
+      const dy = e.clientY - lastY
+      lastX = e.clientX
+      lastY = e.clientY
 
-      rotateCamera(cameraState, dx * 0.003, dy * 0.003)
-      syncCameraToMaterial(cameraState, material)
-      needsRender = true
-      render()
-    }
+      yaw -= dx * 0.003
+      pitch -= dy * 0.003
+      pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch))
 
-    function onKeyDown(e: KeyboardEvent) {
-      const key = e.key.toLowerCase()
-      keysPressed.add(key)
-
-      if (e.key === ' ') {
-        resetCamera(cameraState)
-        syncCameraToMaterial(cameraState, material)
-        needsRender = true
-        render()
-      }
-
-      if (
-        [
-          'w',
-          's',
-          'a',
-          'd',
-          'arrowup',
-          'arrowdown',
-          'arrowleft',
-          'arrowright',
-        ].includes(key)
-      ) {
-        startMovementLoop()
-      }
-    }
-
-    function onKeyUp(e: KeyboardEvent) {
-      keysPressed.delete(e.key.toLowerCase())
-    }
-
-    function onWheel(e: WheelEvent) {
-      e.preventDefault()
-      const delta = -Math.sign(e.deltaY)
-      moveCamera(cameraState, delta, 0, 0.1)
-      syncCameraToMaterial(cameraState, material)
-      needsRender = true
-      render()
+      updateCameraRotation()
     }
 
     function onResize() {
       const width = container.clientWidth
       const height = container.clientHeight
+      camera.aspect = width / height
+      camera.updateProjectionMatrix()
       renderer.setSize(width, height)
-      updateResolutionV2(material, width, height)
-      needsRender = true
-      render()
     }
 
-    // Attach events
     container.addEventListener('mousedown', onMouseDown)
     window.addEventListener('mouseup', onMouseUp)
     window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
-    container.addEventListener('wheel', onWheel, { passive: false })
     window.addEventListener('resize', onResize)
 
-    setInfo(`${honeycombName(p, q, r)} (${visibleLayers} layers)`)
-
     return () => {
-      stopMovementLoop()
+      cancelAnimationFrame(animationId)
       container.removeEventListener('mousedown', onMouseDown)
       window.removeEventListener('mouseup', onMouseUp)
       window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup', onKeyUp)
-      container.removeEventListener('wheel', onWheel)
       window.removeEventListener('resize', onResize)
       container.removeChild(renderer.domElement)
       renderer.dispose()
-      geometry.dispose()
-      material.dispose()
     }
   }, [p, q, r])
 
@@ -265,7 +184,7 @@ export default function HyperbolicHoneycombThreeJS() {
           <h1 className="text-xl font-semibold">{info}</h1>
         </div>
         <div className="text-sm text-gray-500">
-          BFS Cell Enumeration + Depth Lookup
+          Explicit Mesh Geometry
         </div>
       </header>
       <main className="flex-1 relative">
@@ -283,9 +202,6 @@ export default function HyperbolicHoneycombThreeJS() {
         )}
         <div className="absolute bottom-4 left-4 text-xs text-gray-300 bg-black/50 p-2 rounded space-y-1">
           <div>Drag to look around</div>
-          <div>WASD / Arrow keys to move</div>
-          <div>Scroll to zoom</div>
-          <div>Space to reset position</div>
         </div>
       </main>
     </div>

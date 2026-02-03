@@ -37,6 +37,13 @@ export {
   estimateCellCount,
 } from './cell-enumeration'
 
+// Mesh-based rendering (explicit geometry, guarantees complete polyhedra)
+export {
+  type HoneycombMeshOptions,
+  generateHoneycombMesh,
+  createHoneycombScene,
+} from './mesh-generator'
+
 // Navigation and controls
 export {
   type HyperbolicCameraState,
