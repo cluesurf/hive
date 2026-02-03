@@ -47,8 +47,20 @@ Node.js or Web Workers for computation-heavy tasks.
 This is phase 1 of the vibe coding UI, 2D demo. _(Test with
 `pnpm test:site` and see)._
 
+```
+/hyperbolic/2d/3/7
+```
+
 <p align='center'>
   <img src='https://github.com/cluesurf/hive/blob/make/view/vibe-phase-1.png?raw=true'/>
+</p>
+
+```
+/hyperbolic/3d/3/5/3
+```
+
+<p align='center'>
+  <img src='https://github.com/cluesurf/hive/blob/make/view/vibe-phase-2.png?raw=true'/>
 </p>
 
 ## Digging In
