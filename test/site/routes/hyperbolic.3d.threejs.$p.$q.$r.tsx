@@ -13,12 +13,13 @@ import {
   moveCamera,
   resetCamera,
   enumerateCells,
+  type HyperbolicCameraState,
 } from '../../../code/honeycomb'
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
     {
-      title: `{${data?.p},${data?.q},${data?.r}} Hyperbolic Honeycomb`,
+      title: `{${data?.p},${data?.q},${data?.r}} Hyperbolic Honeycomb (V2)`,
     },
   ]
 }
@@ -31,7 +32,7 @@ export async function loader({ params }: LoaderFunctionArgs) {
   return { p, q, r, isHyperbolic }
 }
 
-export default function HyperbolicHoneycombThreeJS() {
+export default function HyperbolicHoneycombV2() {
   const { p, q, r, isHyperbolic } = useLoaderData<typeof loader>()
   const containerRef = useRef<HTMLDivElement>(null)
   const [info, setInfo] = useState('')
@@ -268,7 +269,7 @@ export default function HyperbolicHoneycombThreeJS() {
           <h1 className="text-xl font-semibold">{info}</h1>
         </div>
         <div className="text-sm text-gray-500">
-          BFS Cell Enumeration + Depth Lookup
+          Option B: BFS Cell Enumeration + Depth Lookup
         </div>
       </header>
       <main className="flex-1 relative">
