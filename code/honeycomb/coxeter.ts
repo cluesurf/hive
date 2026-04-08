@@ -205,6 +205,28 @@ export function isHyperbolicHoneycomb(
 }
 
 /**
+ * Check if {p,q,r} has compact (finite) polyhedral cells.
+ * Cells are {p,q} polyhedra, which are finite only when (p-2)(q-2) < 4.
+ */
+export function isCompactHoneycomb(
+  p: number,
+  q: number,
+): boolean {
+  return (p - 2) * (q - 2) < 4
+}
+
+/**
+ * Check if {p,q} cells have ideal vertices ((p-2)(q-2) = 4)
+ * or ultra-ideal vertices ((p-2)(q-2) > 4).
+ */
+export function hasIdealVertices(
+  p: number,
+  q: number,
+): boolean {
+  return (p - 2) * (q - 2) >= 4
+}
+
+/**
  * Get descriptive name for a honeycomb.
  */
 export function honeycombName(p: number, q: number, r: number): string {

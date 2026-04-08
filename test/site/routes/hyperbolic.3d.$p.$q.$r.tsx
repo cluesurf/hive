@@ -37,10 +37,10 @@ export default function HyperbolicHoneycombMesh() {
     const scene = new THREE.Scene()
     const bgColor = new THREE.Color(5 / 255, 150 / 255, 105 / 255) // Emerald 600
     scene.background = bgColor
-    // Add fog for depth perception - objects fade into background with distance
-    scene.fog = new THREE.Fog(bgColor, 0.3, 1.2)
+    // Add fog for depth perception - push far out to show distant structure
+    scene.fog = new THREE.Fog(bgColor, 0.5, 2.5)
 
-    // Perspective camera at origin looking outward
+    // Perspective camera at origin looking toward the geometry
     const camera = new THREE.PerspectiveCamera(
       90,
       container.clientWidth / container.clientHeight,
@@ -61,7 +61,7 @@ export default function HyperbolicHoneycombMesh() {
     scene.add(ambientLight)
 
     // Strong point light at camera for interior viewing
-    const pointLight = new THREE.PointLight(0xffffff, 1.5, 2)
+    const pointLight = new THREE.PointLight(0xffffff, 1.5, 5)
     pointLight.position.set(0, 0, 0)
     scene.add(pointLight)
 
@@ -92,14 +92,25 @@ export default function HyperbolicHoneycombMesh() {
           honeycombGroup.children.length
         } meshes)`,
       )
+
+      // Point camera toward the geometry centroid for the best initial view
+      if (honeycombGroup.children.length > 0) {
+        const box = new THREE.Box3().setFromObject(honeycombGroup)
+        const center = box.getCenter(new THREE.Vector3())
+        camera.lookAt(center)
+      }
     } catch (error) {
       console.error('Error generating honeycomb:', error)
       setInfo(`${honeycombName(p, q, r)} (error generating mesh)`)
     }
 
-    // Camera rotation state
-    let yaw = 0
-    let pitch = 0
+    // Camera rotation state - initialize from current camera orientation
+    const initialEuler = new THREE.Euler().setFromQuaternion(
+      camera.quaternion,
+      'YXZ',
+    )
+    let yaw = initialEuler.y
+    let pitch = initialEuler.x
     const euler = new THREE.Euler(0, 0, 0, 'YXZ')
 
     function updateCameraRotation() {

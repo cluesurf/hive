@@ -9,6 +9,7 @@ export {
   type CoxeterGroup,
   initCoxeterGroup,
   isHyperbolicHoneycomb,
+  isCompactHoneycomb,
   honeycombName,
 } from './coxeter'
 

@@ -15,13 +15,34 @@ function hdot(a: number[], b: number[]): number {
 }
 
 /**
- * Normalize a hyperboloid point
+ * Normalize a hyperboloid point.
+ * For timelike vectors (on the hyperboloid), normalize to unit hyperboloid.
+ * For spacelike/lightlike vectors (ultra-ideal/ideal vertices),
+ * truncate to a finite point on the hyperboloid along the spatial direction.
  */
 function hnormalize(p: number[]): number[] {
-  const sq = -hdot(p, p)
-  if (sq <= 0) return [0, 0, 0, 1] // fallback
-  const norm = Math.sqrt(sq)
-  return [p[0] / norm, p[1] / norm, p[2] / norm, p[3] / norm]
+  const sq = -hdot(p, p) // positive for timelike
+  if (sq > 1e-10) {
+    const norm = Math.sqrt(sq)
+    return [p[0] / norm, p[1] / norm, p[2] / norm, p[3] / norm]
+  }
+
+  // Ultra-ideal or lightlike: project along spatial direction
+  // at a fixed hyperbolic distance from the origin
+  const spatialSq = p[0] * p[0] + p[1] * p[1] + p[2] * p[2]
+  if (spatialSq < 1e-10) return [0, 0, 0, 1]
+
+  const spatialNorm = Math.sqrt(spatialSq)
+  const truncDist = 1.2
+  const sinhD = Math.sinh(truncDist)
+  const coshD = Math.cosh(truncDist)
+
+  return [
+    (sinhD * p[0]) / spatialNorm,
+    (sinhD * p[1]) / spatialNorm,
+    (sinhD * p[2]) / spatialNorm,
+    coshD,
+  ]
 }
 
 /**
@@ -71,12 +92,16 @@ function reflect(p: number[], n: number[]): number[] {
     p[0] - f * n[0],
     p[1] - f * n[1],
     p[2] - f * n[2],
-    p[3] + f * n[3], // + because η_33 = -1
+    p[3] - f * n[3],
   ]
 }
 
 /**
- * Compute Coxeter mirror normals for {p,q,r} honeycomb
+ * Compute Coxeter mirror normals for {p,q,r} honeycomb.
+ *
+ * Handles both compact honeycombs (where all spatial components suffice)
+ * and non-compact ones (where mirror C needs a timelike component because
+ * the 3x3 Gram minor goes negative, e.g. {7,3,3}).
  */
 function computeCoxeterMirrors(
   p: number,
@@ -91,7 +116,7 @@ function computeCoxeterMirrors(
   const c13 = 0 // B-D perpendicular
   const c23 = -Math.cos(PI / r) // C-D angle
 
-  // Gram-Schmidt-like construction for mirror normals
+  // Gram-Schmidt-like decomposition in Minkowski space R^{3,1}
   const A: number[] = [1, 0, 0, 0]
 
   const B: number[] = [c01, Math.sqrt(1 - c01 * c01), 0, 0]
@@ -99,15 +124,37 @@ function computeCoxeterMirrors(
   const C: number[] = [c02, 0, 0, 0]
   C[1] = (c12 - C[0] * B[0]) / B[1]
   const c2sq = 1 - C[0] * C[0] - C[1] * C[1]
-  C[2] = Math.sqrt(Math.max(0, c2sq))
 
-  const D: number[] = [c03, 0, 0, 0]
-  D[1] = (c13 - D[0] * B[0]) / B[1]
-  D[2] = (c23 - D[0] * C[0] - D[1] * C[1]) / C[2]
-  const d3sq = D[0] * D[0] + D[1] * D[1] + D[2] * D[2] - 1
-  D[3] = -Math.sqrt(Math.max(0, d3sq))
+  if (c2sq >= 0) {
+    // Compact case: C is purely spacelike
+    C[2] = Math.sqrt(c2sq)
+    C[3] = 0
 
-  return [A, B, C, D]
+    const D: number[] = [c03, 0, 0, 0]
+    D[1] = (c13 - D[0] * B[0]) / B[1]
+    D[2] = (c23 - D[0] * C[0] - D[1] * C[1]) / C[2]
+    const d3sq = D[0] * D[0] + D[1] * D[1] + D[2] * D[2] - 1
+    D[3] = -Math.sqrt(Math.max(0, d3sq))
+
+    return [A, B, C, D]
+  } else {
+    // Non-compact case: C needs a timelike component
+    // hdot(C,C) = C[0]^2 + C[1]^2 + C[2]^2 - C[3]^2 = 1
+    // With C[2]=0: C[3]^2 = C[0]^2 + C[1]^2 - 1 = -c2sq
+    C[2] = 0
+    C[3] = Math.sqrt(-c2sq)
+
+    const D: number[] = [c03, 0, 0, 0]
+    D[1] = (c13 - D[0] * B[0]) / B[1]
+    // hdot(D,C) = D[1]*C[1] + D[2]*C[2] - D[3]*C[3] = c23
+    // With C[2]=0: D[3] = (D[1]*C[1] - c23) / C[3]
+    D[3] = (D[1] * C[1] - c23) / C[3]
+    // hdot(D,D) = D[0]^2 + D[1]^2 + D[2]^2 - D[3]^2 = 1
+    const d2sq = 1 - D[0] * D[0] - D[1] * D[1] + D[3] * D[3]
+    D[2] = Math.sqrt(Math.max(0, d2sq))
+
+    return [A, B, C, D]
+  }
 }
 
 /**
@@ -208,14 +255,7 @@ function computePolyhedronVertex(mirrors: number[][]): number[] {
   // Use proper Minkowski null space computation
   const v = minkowskiNullVector(B, C, D)
 
-  console.log('Raw vertex v:', v, 'hdot(v,v):', hdot(v, v))
-
-  // Normalize to hyperboloid
-  const result = hnormalize(v)
-  console.log('Normalized vertex:', result)
-  console.log('Verify: hdot(v,B)=', hdot(result, B).toFixed(6), 'hdot(v,C)=', hdot(result, C).toFixed(6), 'hdot(v,D)=', hdot(result, D).toFixed(6))
-
-  return result
+  return hnormalize(v)
 }
 
 /**
@@ -399,7 +439,7 @@ function matrixInverse(m: number[]): number[] {
  * Generate all face reflections by conjugating D with cell stabilizer elements
  * This gives reflections for all faces of the cell, not just one
  */
-function generateFaceReflections(mirrors: number[][], maxStabilizerDepth: number = 15): number[][] {
+function generateFaceReflections(mirrors: number[][], maxStabilizerDepth: number = 15, maxStabilizerElements: number = 5000): number[][] {
   const reflections = mirrors.map(n => reflectionMatrix(n))
   const [A, B, C, D] = reflections
   const stabilizer = [A, B, C]
@@ -412,9 +452,9 @@ function generateFaceReflections(mirrors: number[][], maxStabilizerDepth: number
 
   const queue: { mat: number[]; inv: number[] }[] = [{ mat: identity(), inv: identity() }]
 
-  for (let depth = 0; depth < maxStabilizerDepth && queue.length > 0; ) {
+  for (let depth = 0; depth < maxStabilizerDepth && queue.length > 0 && stabElements.length < maxStabilizerElements; ) {
     const levelSize = queue.length
-    for (let i = 0; i < levelSize; i++) {
+    for (let i = 0; i < levelSize && stabElements.length < maxStabilizerElements; i++) {
       const { mat: g, inv: gInv } = queue.shift()!
 
       for (let si = 0; si < 3; si++) {
@@ -455,37 +495,56 @@ function generateFaceReflections(mirrors: number[][], maxStabilizerDepth: number
 }
 
 /**
- * Enumerate cell transforms using BFS by cell layers
- * Uses all face reflections to ensure uniform exploration in all directions
+ * Enumerate cell transforms using BFS.
+ *
+ * For compact cells (finite stabilizer), uses face reflections (conjugates of D)
+ * to step between cells. This is efficient and exact.
+ *
+ * For non-compact cells (infinite stabilizer), face reflections are incomplete,
+ * so we BFS through the full Coxeter group (all 4 reflections) and identify
+ * unique cells by where they map the cell center. This explores uniformly
+ * in all directions.
  */
 function enumerateCellTransforms(
   mirrors: number[][],
   maxCellLayers: number,
+  maxCells: number = 500,
 ): number[][] {
-  // Generate all face reflections (not just D)
+  const isCompact = 1 - mirrors[2][0] ** 2 - mirrors[2][1] ** 2 >= 0
+
+  if (isCompact) {
+    return enumerateCellTransformsFaceReflections(mirrors, maxCellLayers, maxCells)
+  }
+  return enumerateCellTransformsCoxeterBFS(mirrors, maxCells)
+}
+
+/**
+ * Cell enumeration via face reflections (compact cells only).
+ */
+function enumerateCellTransformsFaceReflections(
+  mirrors: number[][],
+  maxCellLayers: number,
+  maxCells: number,
+): number[][] {
   const faceReflections = generateFaceReflections(mirrors)
 
   const transforms: number[][] = []
   const visited = new Set<string>()
 
   const I = identity()
-  const k0 = matrixKey(I)
-  visited.add(k0)
+  visited.add(matrixKey(I))
   transforms.push(I)
 
-  // BFS using face reflections - each application crosses one cell boundary
   const queue: { mat: number[]; depth: number }[] = [{ mat: I, depth: 0 }]
 
-  while (queue.length > 0) {
+  while (queue.length > 0 && transforms.length < maxCells) {
     const { mat, depth } = queue.shift()!
-
     if (depth >= maxCellLayers) continue
 
-    // Apply all face reflections
     for (const F of faceReflections) {
+      if (transforms.length >= maxCells) break
       const H = mulMatrix(F, mat)
       const k = matrixKey(H)
-
       if (!visited.has(k)) {
         visited.add(k)
         transforms.push(H)
@@ -494,7 +553,64 @@ function enumerateCellTransforms(
     }
   }
 
-  console.log(`Enumerated ${transforms.length} cells at depth ${maxCellLayers}`)
+  console.log(`Face-reflection BFS: ${transforms.length} cells at depth ${maxCellLayers}`)
+  return transforms
+}
+
+/**
+ * Cell enumeration via full Coxeter group BFS (non-compact cells).
+ *
+ * BFS through all 4 reflection matrices, identifying unique cells
+ * by where the cell center maps to. This ensures uniform exploration
+ * in all directions even when face reflections are incomplete.
+ */
+function enumerateCellTransformsCoxeterBFS(
+  mirrors: number[][],
+  maxCells: number,
+): number[][] {
+  const reflections = mirrors.map(n => reflectionMatrix(n))
+  const cellCenter = computeCellCenter(mirrors)
+
+  function centerKey(m: number[]): string {
+    const c = applyMatrix(m, cellCenter)
+    return c.map(v => Math.round(v * 1e4)).join(',')
+  }
+
+  const transforms: number[][] = []
+  const groupVisited = new Set<string>()
+  const cellVisited = new Set<string>()
+
+  const I = identity()
+  groupVisited.add(matrixKey(I))
+  cellVisited.add(centerKey(I))
+  transforms.push(I)
+
+  // BFS through the full Coxeter group
+  const queue: number[][] = [I]
+  const maxGroupElements = maxCells * 50 // explore enough group elements
+
+  while (queue.length > 0 && groupVisited.size < maxGroupElements && transforms.length < maxCells) {
+    const g = queue.shift()!
+
+    for (const R of reflections) {
+      const h = mulMatrix(R, g)
+      const gk = matrixKey(h)
+
+      if (groupVisited.has(gk)) continue
+      groupVisited.add(gk)
+
+      // Check if this maps cell center to a new location
+      const ck = centerKey(h)
+      if (!cellVisited.has(ck)) {
+        cellVisited.add(ck)
+        transforms.push(h)
+      }
+
+      queue.push(h)
+    }
+  }
+
+  console.log(`Coxeter BFS: ${transforms.length} cells from ${groupVisited.size} group elements`)
   return transforms
 }
 
@@ -525,183 +641,162 @@ export function generateHoneycombMesh(
   } = options
 
   const group = new THREE.Group()
-
-  // Compute Coxeter mirrors
   const mirrors = computeCoxeterMirrors(p, q, r)
-  console.log('Mirrors:', mirrors)
 
-  // Generate base polyhedron vertices first
   const baseVertices = generatePolyhedronVertices(mirrors)
-  console.log(`Generated ${baseVertices.length} base vertices`)
-
-  // Compute cell center as centroid of vertices in Poincaré space
-  let centroidX = 0, centroidY = 0, centroidZ = 0
-  for (const v of baseVertices) {
-    const pv = hyperboloidToPoincare(v)
-    centroidX += pv.x
-    centroidY += pv.y
-    centroidZ += pv.z
-  }
-  const n = baseVertices.length
-  const cellCenterPoincare = new THREE.Vector3(centroidX / n, centroidY / n, centroidZ / n)
-  console.log('Cell center (Poincaré centroid):', cellCenterPoincare, 'length:', cellCenterPoincare.length())
-
-  // Generate edges
   const edges = generatePolyhedronEdges(baseVertices)
-  console.log(`Generated ${edges.length} edges, edge length: ${findEdgeLength(baseVertices).toFixed(3)}`)
-
-  // Enumerate cell transforms
   const cellTransforms = enumerateCellTransforms(mirrors, maxDepth)
-  console.log(`Enumerated ${cellTransforms.length} cells`)
 
-  // Zinc color palette for edges
-  const zincColors = [
-    0xe4e4e7, // zinc-200
-    0xd4d4d8, // zinc-300
-    0xa1a1aa, // zinc-400
-    0x71717a, // zinc-500
-    0x52525b, // zinc-600
-  ]
+  console.log(`{${p},${q},${r}}: ${baseVertices.length} vertices, ${edges.length} edges, ${cellTransforms.length} cells`)
 
-  // Create materials for different shades - more metallic for better 3D depth
-  const materials = zincColors.map(
-    color =>
-      new THREE.MeshStandardMaterial({
-        color,
-        metalness: 0.5,
-        roughness: 0.3, // Shinier for better specular highlights
-      }),
-  )
-
-  // Track unique edges to avoid duplicates
+  const materials = createEdgeMaterials()
   const edgeSet = new Set<string>()
 
-  function edgeKey(p1: THREE.Vector3, p2: THREE.Vector3): string {
-    const a = [
-      Math.round(p1.x * 1e4),
-      Math.round(p1.y * 1e4),
-      Math.round(p1.z * 1e4),
-    ].join(',')
-    const b = [
-      Math.round(p2.x * 1e4),
-      Math.round(p2.y * 1e4),
-      Math.round(p2.z * 1e4),
-    ].join(',')
-    return a < b ? `${a}|${b}` : `${b}|${a}`
-  }
-
-  let skippedClipping = 0
-  let skippedDuplicate = 0
-  let skippedTooShort = 0
-
-  // For each cell, transform vertices and create edge geometry
   for (const transform of cellTransforms) {
-    // Transform all vertices to Poincaré ball
+    if (group.children.length >= 50000) break
+
     const transformedVertices = baseVertices.map(v => {
       const tv = applyMatrix(transform, v)
       return hyperboloidToPoincare(tv)
     })
 
-    // Create tube geometry for each edge
     for (const [i, j] of edges) {
       const v1 = transformedVertices[i]
       const v2 = transformedVertices[j]
 
-      // Skip edges with vertices too close to boundary (they would appear infinitely large)
-      if (v1.length() > 0.995 || v2.length() > 0.995) {
-        skippedClipping++
-        continue
-      }
+      if (v1.length() > 0.995 || v2.length() > 0.995) continue
 
-      // Skip duplicate edges
-      const ek = edgeKey(v1, v2)
-      if (edgeSet.has(ek)) {
-        skippedDuplicate++
-        continue
-      }
+      const ek = pairKey(v1, v2)
+      if (edgeSet.has(ek)) continue
       edgeSet.add(ek)
 
-      // Create cylinder
-      const mid = new THREE.Vector3().addVectors(v1, v2).multiplyScalar(0.5)
-      const direction = new THREE.Vector3().subVectors(v2, v1)
-      const length = direction.length()
-
-      if (length < 0.001) {
-        skippedTooShort++
-        continue
-      }
-
-      direction.normalize()
-
-      const geometry = new THREE.CylinderGeometry(
-        edgeRadius,
-        edgeRadius,
-        length,
-        edgeSegments,
-      )
-
-      // Pick material based on distance from origin for visual variety
-      const distFromOrigin = mid.length()
-      const materialIndex = Math.min(
-        Math.floor(distFromOrigin * materials.length * 1.5),
-        materials.length - 1,
-      )
-      const mesh = new THREE.Mesh(geometry, materials[materialIndex])
-      mesh.position.copy(mid)
-      mesh.quaternion.setFromUnitVectors(
-        new THREE.Vector3(0, 1, 0),
-        direction,
-      )
-
-      group.add(mesh)
+      addEdgeMesh(group, v1, v2, edgeRadius, edgeSegments, materials)
     }
   }
 
-  const edgeCount = group.children.length
-  console.log(`Created ${edgeCount} edge meshes (skipped: ${skippedClipping} clipping, ${skippedDuplicate} duplicate, ${skippedTooShort} too short)`)
-
-  // Optionally add vertex spheres
   if (options.showVertices !== false) {
-    const vertexRadius = options.vertexRadius ?? edgeRadius * 1.5
-    const vertexGeometry = new THREE.SphereGeometry(vertexRadius, 8, 6)
+    addVertexSpheres(group, baseVertices, cellTransforms, options, materials)
+  }
 
-    const vertexSet = new Set<string>()
-    function vertexKey(v: THREE.Vector3): string {
-      return [
+  return group
+}
+
+/**
+ * Create zinc-toned materials for edge rendering
+ */
+function createEdgeMaterials(): THREE.MeshStandardMaterial[] {
+  const zincColors = [
+    0xe4e4e7, 0xd4d4d8, 0xa1a1aa, 0x71717a, 0x52525b,
+  ]
+  return zincColors.map(
+    color =>
+      new THREE.MeshStandardMaterial({
+        color,
+        metalness: 0.5,
+        roughness: 0.3,
+      }),
+  )
+}
+
+/**
+ * Poincaré-space key for edge deduplication
+ */
+function pairKey(p1: THREE.Vector3, p2: THREE.Vector3): string {
+  const a = [
+    Math.round(p1.x * 1e4),
+    Math.round(p1.y * 1e4),
+    Math.round(p1.z * 1e4),
+  ].join(',')
+  const b = [
+    Math.round(p2.x * 1e4),
+    Math.round(p2.y * 1e4),
+    Math.round(p2.z * 1e4),
+  ].join(',')
+  return a < b ? `${a}|${b}` : `${b}|${a}`
+}
+
+/**
+ * Add a cylinder mesh between two Poincaré-ball points
+ */
+function addEdgeMesh(
+  group: THREE.Group,
+  v1: THREE.Vector3,
+  v2: THREE.Vector3,
+  edgeRadius: number,
+  edgeSegments: number,
+  materials: THREE.MeshStandardMaterial[],
+): void {
+  const mid = new THREE.Vector3().addVectors(v1, v2).multiplyScalar(0.5)
+  const direction = new THREE.Vector3().subVectors(v2, v1)
+  const length = direction.length()
+
+  if (length < 0.001) return
+
+  direction.normalize()
+
+  const geometry = new THREE.CylinderGeometry(
+    edgeRadius,
+    edgeRadius,
+    length,
+    edgeSegments,
+  )
+
+  const distFromOrigin = mid.length()
+  const materialIndex = Math.min(
+    Math.floor(distFromOrigin * materials.length * 1.5),
+    materials.length - 1,
+  )
+  const mesh = new THREE.Mesh(geometry, materials[materialIndex])
+  mesh.position.copy(mid)
+  mesh.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    direction,
+  )
+
+  group.add(mesh)
+}
+
+/**
+ * Add vertex spheres for compact honeycomb rendering
+ */
+function addVertexSpheres(
+  group: THREE.Group,
+  baseVertices: number[][],
+  cellTransforms: number[][],
+  options: HoneycombMeshOptions,
+  materials: THREE.MeshStandardMaterial[],
+): void {
+  const vertexRadius = options.vertexRadius ?? (options.edgeRadius ?? 0.015) * 1.5
+  const vertexGeometry = new THREE.SphereGeometry(vertexRadius, 8, 6)
+
+  const vertexSet = new Set<string>()
+
+  for (const transform of cellTransforms) {
+    const transformedVertices = baseVertices.map(v => {
+      const tv = applyMatrix(transform, v)
+      return hyperboloidToPoincare(tv)
+    })
+
+    for (const v of transformedVertices) {
+      if (v.length() > 0.995) continue
+      const vk = [
         Math.round(v.x * 1e4),
         Math.round(v.y * 1e4),
         Math.round(v.z * 1e4),
       ].join(',')
+      if (vertexSet.has(vk)) continue
+      vertexSet.add(vk)
+
+      const distFromOrigin = v.length()
+      const materialIndex = Math.min(
+        Math.floor(distFromOrigin * materials.length * 1.5),
+        materials.length - 1,
+      )
+      const mesh = new THREE.Mesh(vertexGeometry, materials[materialIndex])
+      mesh.position.copy(v)
+      group.add(mesh)
     }
-
-    for (const transform of cellTransforms) {
-      const transformedVertices = baseVertices.map(v => {
-        const tv = applyMatrix(transform, v)
-        return hyperboloidToPoincare(tv)
-      })
-
-      for (const v of transformedVertices) {
-        if (v.length() > 0.995) continue
-        const vk = vertexKey(v)
-        if (vertexSet.has(vk)) continue
-        vertexSet.add(vk)
-
-        // Use same color scheme as edges based on distance
-        const distFromOrigin = v.length()
-        const materialIndex = Math.min(
-          Math.floor(distFromOrigin * materials.length * 1.5),
-          materials.length - 1,
-        )
-        const mesh = new THREE.Mesh(vertexGeometry, materials[materialIndex])
-        mesh.position.copy(v)
-        group.add(mesh)
-      }
-    }
-
-    console.log(`Added ${group.children.length - edgeCount} vertex spheres`)
   }
-
-  return group
 }
 
 /**

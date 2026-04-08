@@ -9,6 +9,7 @@ export default defineConfig({
     tailwindcss(),
     remix({
       appDirectory: '.',
+      ignoredRouteFiles: ['**/node_modules/**', '**/component/**', '**/tool/**', '**/style/**', '**/public/**'],
       future: {
         v3_fetcherPersist: true,
         v3_relativeSplatPath: true,
@@ -17,7 +18,7 @@ export default defineConfig({
         v3_lazyRouteDiscovery: true,
       },
     }),
-    tsconfigPaths(),
+    tsconfigPaths({ root: __dirname }),
   ],
   resolve: {
     alias: {
