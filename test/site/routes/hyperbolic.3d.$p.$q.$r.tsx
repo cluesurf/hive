@@ -37,8 +37,9 @@ export default function HyperbolicHoneycombMesh() {
     const scene = new THREE.Scene()
     const bgColor = new THREE.Color(5 / 255, 150 / 255, 105 / 255) // Emerald 600
     scene.background = bgColor
-    // Add fog for depth perception - push far out to show distant structure
-    scene.fog = new THREE.Fog(bgColor, 0.5, 2.5)
+    // Fog fades geometry toward the Poincaré ball boundary (radius ~1)
+    // so the cutoff blends smoothly into the background
+    scene.fog = new THREE.Fog(bgColor, 0.2, 1.05)
 
     // Perspective camera at origin looking toward the geometry
     const camera = new THREE.PerspectiveCamera(
@@ -87,17 +88,23 @@ export default function HyperbolicHoneycombMesh() {
     try {
       const honeycombGroup = createHoneycombScene(p, q, r, maxDepth)
       scene.add(honeycombGroup)
+      const edgeCount =
+        honeycombGroup.userData.edgeCount ??
+        honeycombGroup.children.length
       setInfo(
-        `${honeycombName(p, q, r)} (depth ${maxDepth}, ${
-          honeycombGroup.children.length
-        } meshes)`,
+        `${honeycombName(p, q, r)} (depth ${maxDepth}, ${edgeCount} edges)`,
       )
 
-      // Point camera toward the geometry centroid for the best initial view
+      // For non-compact honeycombs, geometry is Lorentz-boosted to center
+      // at origin. For compact ones, move camera to centroid.
       if (honeycombGroup.children.length > 0) {
         const box = new THREE.Box3().setFromObject(honeycombGroup)
         const center = box.getCenter(new THREE.Vector3())
-        camera.lookAt(center)
+        // Only move camera if geometry is significantly off-center
+        if (center.length() > 0.05) {
+          camera.position.copy(center)
+          pointLight.position.copy(center)
+        }
       }
     } catch (error) {
       console.error('Error generating honeycomb:', error)

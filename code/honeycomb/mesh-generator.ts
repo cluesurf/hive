@@ -279,7 +279,7 @@ function generatePolyhedronVertices(mirrors: number[][]): number[][] {
   visited.add(key(v0))
   vertices.push(v0)
 
-  const maxVertices = 200 // Safety limit
+  const maxVertices = 500 // Safety limit
 
   while (queue.length > 0 && vertices.length < maxVertices) {
     const v = queue.shift()!
@@ -626,50 +626,55 @@ export interface HoneycombMeshOptions {
 }
 
 /**
- * Generate Three.js geometry for a hyperbolic honeycomb
+ * Check if {p,q} cells are compact (finite polyhedra).
+ */
+function isCompactCell(p: number, q: number): boolean {
+  return (p - 2) * (q - 2) < 4
+}
+
+/**
+ * Generate Three.js geometry for a hyperbolic honeycomb.
+ * Uses cell-based approach for compact cells,
+ * unified Coxeter BFS for non-compact cells.
  */
 export function generateHoneycombMesh(
   options: HoneycombMeshOptions,
 ): THREE.Group {
-  const {
-    p,
-    q,
-    r,
-    maxDepth,
-    edgeRadius = 0.015,
-    edgeSegments = 6,
-  } = options
+  if (isCompactCell(options.p, options.q)) {
+    return generateCompactMesh(options)
+  }
+  return generateNonCompactMesh(options)
+}
 
+/**
+ * Compact honeycombs: enumerate finite cells, replicate edges.
+ */
+function generateCompactMesh(
+  options: HoneycombMeshOptions,
+): THREE.Group {
+  const { p, q, r, maxDepth, edgeRadius = 0.015, edgeSegments = 6 } = options
   const group = new THREE.Group()
   const mirrors = computeCoxeterMirrors(p, q, r)
 
   const baseVertices = generatePolyhedronVertices(mirrors)
   const edges = generatePolyhedronEdges(baseVertices)
-  const cellTransforms = enumerateCellTransforms(mirrors, maxDepth)
-
-  console.log(`{${p},${q},${r}}: ${baseVertices.length} vertices, ${edges.length} edges, ${cellTransforms.length} cells`)
+  const cellTransforms = enumerateCellTransformsFaceReflections(mirrors, maxDepth, 500)
 
   const materials = createEdgeMaterials()
   const edgeSet = new Set<string>()
 
   for (const transform of cellTransforms) {
     if (group.children.length >= 50000) break
-
-    const transformedVertices = baseVertices.map(v => {
-      const tv = applyMatrix(transform, v)
-      return hyperboloidToPoincare(tv)
-    })
-
+    const transformedVertices = baseVertices.map(v =>
+      hyperboloidToPoincare(applyMatrix(transform, v)),
+    )
     for (const [i, j] of edges) {
       const v1 = transformedVertices[i]
       const v2 = transformedVertices[j]
-
       if (v1.length() > 0.995 || v2.length() > 0.995) continue
-
       const ek = pairKey(v1, v2)
       if (edgeSet.has(ek)) continue
       edgeSet.add(ek)
-
       addEdgeMesh(group, v1, v2, edgeRadius, edgeSegments, materials)
     }
   }
@@ -677,7 +682,240 @@ export function generateHoneycombMesh(
   if (options.showVertices !== false) {
     addVertexSpheres(group, baseVertices, cellTransforms, options, materials)
   }
+  return group
+}
 
+/**
+ * Construct a Lorentz boost matrix (column-major 4x4) that maps
+ * hyperboloid point `p` to the origin (0,0,0,1).
+ */
+function lorentzBoostToOrigin(p: number[]): number[] {
+  const [sx, sy, sz, w] = p
+  const inv = 1 / (1 + w)
+  return [
+    1 + sx * sx * inv, sy * sx * inv, sz * sx * inv, -sx,
+    sx * sy * inv, 1 + sy * sy * inv, sz * sy * inv, -sy,
+    sx * sz * inv, sy * sz * inv, 1 + sz * sz * inv, -sz,
+    -sx, -sy, -sz, w,
+  ]
+}
+
+/**
+ * Inverse Lorentz boost: maps origin (0,0,0,1) TO point `p`.
+ */
+function lorentzBoostFromOrigin(p: number[]): number[] {
+  const [sx, sy, sz, w] = p
+  const inv = 1 / (1 + w)
+  return [
+    1 + sx * sx * inv, sy * sx * inv, sz * sx * inv, sx,
+    sx * sy * inv, 1 + sy * sy * inv, sz * sy * inv, sy,
+    sx * sz * inv, sy * sz * inv, 1 + sz * sz * inv, sz,
+    sx, sy, sz, w,
+  ]
+}
+
+/**
+ * Non-compact honeycombs: BFS through ALL 4 Coxeter reflections
+ * in the CENTERED frame (Lorentz-boosted so V_A is at the origin).
+ * This ensures the Poincaré radius cutoff is unbiased and vertices
+ * fill the ball uniformly in all directions.
+ */
+function generateNonCompactMesh(
+  options: HoneycombMeshOptions,
+): THREE.Group {
+  const { p, q, r, edgeRadius = 0.015, edgeSegments = 6 } = options
+  const group = new THREE.Group()
+  const mirrors = computeCoxeterMirrors(p, q, r)
+  const v0 = computePolyhedronVertex(mirrors)
+
+  // Lorentz boost V_A to origin, transform reflection matrices
+  const B = lorentzBoostToOrigin(v0)
+  const Binv = lorentzBoostFromOrigin(v0)
+  const reflMatrices = mirrors.map(n => reflectionMatrix(n))
+  const centeredReflMatrices = reflMatrices.map(R =>
+    mulMatrix(mulMatrix(B, R), Binv),
+  )
+
+  // BFS from origin in the centered frame
+  const origin: number[] = [0, 0, 0, 1]
+  const vertices: number[][] = []
+  const poincareVerts: THREE.Vector3[] = []
+  const vertexMap = new Map<string, number>()
+
+  function vkey(v: number[]): string {
+    return v.map(x => Math.round(x * 1e4)).join(',')
+  }
+
+  const maxVertices = 30000
+  const maxPoincareRadius = 0.995
+
+  // Start from origin (boosted V_A)
+  const startV = applyMatrix(B, v0)
+  vertices.push(startV)
+  poincareVerts.push(hyperboloidToPoincare(startV))
+  vertexMap.set(vkey(startV), 0)
+  const queue: number[] = [0]
+
+  while (queue.length > 0 && vertices.length < maxVertices) {
+    const idx = queue.shift()!
+    const v = vertices[idx]
+
+    for (let i = 0; i < 4; i++) {
+      const vr = applyMatrix(centeredReflMatrices[i], v)
+      const k = vkey(vr)
+      if (vertexMap.has(k)) continue
+
+      const pv = hyperboloidToPoincare(vr)
+      if (pv.length() > maxPoincareRadius) continue
+
+      vertexMap.set(k, vertices.length)
+      vertices.push(vr)
+      poincareVerts.push(pv)
+      queue.push(vertices.length - 1)
+    }
+  }
+
+  // Edge detection with spatial grid hash for O(n*k) performance
+  // Compute edge length analytically: distance from V_A to its reflection through mirror A
+  const edgeLength = 2 * Math.asinh(Math.abs(hdot(v0, mirrors[0])))
+  const targetCosh = Math.cosh(edgeLength)
+  const tolerance = 0.01
+
+  // Compute max Poincaré distance for edge-adjacent pairs near center
+  // This determines grid size and search range
+  let maxPoincareDist = 0
+  for (let i = 0; i < Math.min(20, vertices.length); i++) {
+    for (let j = i + 1; j < Math.min(20, vertices.length); j++) {
+      const negDot = -(
+        vertices[i][0] * vertices[j][0] +
+        vertices[i][1] * vertices[j][1] +
+        vertices[i][2] * vertices[j][2] -
+        vertices[i][3] * vertices[j][3]
+      )
+      if (Math.abs(negDot - targetCosh) > tolerance) continue
+      const dx = poincareVerts[i].x - poincareVerts[j].x
+      const dy = poincareVerts[i].y - poincareVerts[j].y
+      const dz = poincareVerts[i].z - poincareVerts[j].z
+      const pd = Math.sqrt(dx * dx + dy * dy + dz * dz)
+      if (pd > maxPoincareDist) maxPoincareDist = pd
+    }
+  }
+  if (maxPoincareDist < 0.1) maxPoincareDist = 0.5
+
+  // Adaptive grid: cell size = maxPoincareDist/2, search range covers full distance
+  const gridSize = Math.max(0.05, maxPoincareDist / 2)
+  const searchRange = Math.ceil(maxPoincareDist / gridSize) + 1
+  const grid = new Map<string, number[]>()
+
+  for (let i = 0; i < vertices.length; i++) {
+    if (poincareVerts[i].length() > 0.995) continue
+    const pv = poincareVerts[i]
+    const gx = Math.floor(pv.x / gridSize)
+    const gy = Math.floor(pv.y / gridSize)
+    const gz = Math.floor(pv.z / gridSize)
+    const gk = `${gx},${gy},${gz}`
+    if (!grid.has(gk)) grid.set(gk, [])
+    grid.get(gk)!.push(i)
+  }
+
+  const edgeData: { v1: THREE.Vector3; v2: THREE.Vector3 }[] = []
+  const edgeSet = new Set<string>()
+
+  grid.forEach((indices, gk) => {
+    const [gx, gy, gz] = gk.split(',').map(Number)
+
+    for (let dx = -searchRange; dx <= searchRange; dx++) {
+      for (let dy = -searchRange; dy <= searchRange; dy++) {
+        for (let dz = -searchRange; dz <= searchRange; dz++) {
+          const nk = `${gx + dx},${gy + dy},${gz + dz}`
+          const neighbors = grid.get(nk)
+          if (!neighbors) continue
+
+          for (const i of indices) {
+            for (const j of neighbors) {
+              if (j <= i) continue
+
+              const negDot = -(
+                vertices[i][0] * vertices[j][0] +
+                vertices[i][1] * vertices[j][1] +
+                vertices[i][2] * vertices[j][2] -
+                vertices[i][3] * vertices[j][3]
+              )
+              if (Math.abs(negDot - targetCosh) > tolerance) continue
+
+              const v1 = poincareVerts[i]
+              const v2 = poincareVerts[j]
+
+              const ddx = v2.x - v1.x
+              const ddy = v2.y - v1.y
+              const ddz = v2.z - v1.z
+              if (ddx * ddx + ddy * ddy + ddz * ddz < 0.000004) continue
+
+              const ek = pairKey(v1, v2)
+              if (edgeSet.has(ek)) continue
+              edgeSet.add(ek)
+
+              edgeData.push({ v1, v2 })
+            }
+          }
+        }
+      }
+    }
+  })
+
+  // Render with InstancedMesh
+  if (edgeData.length > 0) {
+    const templateGeom = new THREE.CylinderGeometry(1, 1, 1, edgeSegments)
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xa1a1aa,
+      metalness: 0.5,
+      roughness: 0.3,
+    })
+    const instancedMesh = new THREE.InstancedMesh(
+      templateGeom,
+      material,
+      edgeData.length,
+    )
+    const dummy = new THREE.Object3D()
+
+    for (let ei = 0; ei < edgeData.length; ei++) {
+      const { v1, v2 } = edgeData[ei]
+      const mid = new THREE.Vector3().addVectors(v1, v2).multiplyScalar(0.5)
+      const direction = new THREE.Vector3().subVectors(v2, v1)
+      const length = direction.length()
+      if (length < 0.001) continue
+      direction.normalize()
+
+      const scaledRadius = edgeRadius * Math.min(1, length / 0.05)
+
+      dummy.position.copy(mid)
+      dummy.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        direction,
+      )
+      dummy.scale.set(scaledRadius, length, scaledRadius)
+      dummy.updateMatrix()
+      instancedMesh.setMatrixAt(ei, dummy.matrix)
+
+      const distFromOrigin = mid.length()
+      const t = Math.min(1, distFromOrigin * 1.5)
+      const color = new THREE.Color().lerpColors(
+        new THREE.Color(0xe4e4e7),
+        new THREE.Color(0x52525b),
+        t,
+      )
+      instancedMesh.setColorAt(ei, color)
+    }
+    instancedMesh.instanceMatrix.needsUpdate = true
+    if (instancedMesh.instanceColor)
+      instancedMesh.instanceColor.needsUpdate = true
+    group.add(instancedMesh)
+  }
+
+  console.log(
+    `Non-compact BFS: ${vertices.length} vertices, ${edgeData.length} edges`,
+  )
+  group.userData.edgeCount = edgeData.length
   return group
 }
 
@@ -734,9 +972,12 @@ function addEdgeMesh(
 
   direction.normalize()
 
+  // Scale edge radius by Poincaré length so distant edges are proportionally thinner
+  const scaledRadius = edgeRadius * Math.min(1, length / 0.05)
+
   const geometry = new THREE.CylinderGeometry(
-    edgeRadius,
-    edgeRadius,
+    scaledRadius,
+    scaledRadius,
     length,
     edgeSegments,
   )

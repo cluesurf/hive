@@ -518,13 +518,54 @@ export class Hyperbolic2DTessellation {
 
   /**
    * Find which edge of neighbor connects back when crossing edge dir.
-   * For regular {p,q} tilings, the neighbor is rotated by π, so the back edge
-   * is approximately opposite: (dir + p/2) mod p.
+   * Computed numerically from the edge transform.
    */
   private findBackDirection(dir: number): number {
+    if (!this.backDirectionCache) {
+      this.backDirectionCache = this.computeBackDirections()
+    }
+    return this.backDirectionCache[dir]
+  }
+
+  private backDirectionCache: number[] | null = null
+
+  private computeBackDirections(): number[] {
     const { p } = this.config
-    // The neighbor tile is rotated by π, so back edge is offset by p/2
-    return (dir + Math.floor(p / 2)) % p
+    const result: number[] = []
+
+    for (let dir = 0; dir < p; dir++) {
+      const edgeTransform = this.edgeTransforms[dir]!
+
+      // Where does the origin appear in the neighbor's frame?
+      const invTransform = this.invertSU11(edgeTransform)
+      const originInNeighbor = this.applySU11Transform(invTransform, [0, 0])
+
+      // Find which edge direction is closest
+      let bestDir = 0
+      let bestDot = -Infinity
+      const len = Math.sqrt(
+        originInNeighbor[0] * originInNeighbor[0] +
+          originInNeighbor[1] * originInNeighbor[1],
+      )
+      if (len < 0.0001) {
+        result.push((dir + Math.floor(p / 2)) % p)
+        continue
+      }
+      for (let k = 0; k < p; k++) {
+        const edgeAngle = (2 * Math.PI * (k + 0.5)) / p
+        const dot =
+          (originInNeighbor[0] * Math.cos(edgeAngle) +
+            originInNeighbor[1] * Math.sin(edgeAngle)) /
+          len
+        if (dot > bestDot) {
+          bestDot = dot
+          bestDir = k
+        }
+      }
+      result.push(bestDir)
+    }
+
+    return result
   }
 
   /**
@@ -555,7 +596,7 @@ export class Hyperbolic2DTessellation {
    */
   private updateCenterCell(): void {
     let current = this.centerCell
-    const maxSteps = 500 // Allow walking very far for navigation
+    const maxSteps = 2000 // Allow walking very far for navigation
 
     for (let step = 0; step < maxSteps; step++) {
       const currentTransform = current.transform
@@ -709,40 +750,30 @@ export class Hyperbolic2DTessellation {
 
   /**
    * Precompute edge crossing transforms.
-   * For each edge, compute the transform that takes this tile to its neighbor.
+   * For each edge, compute the Möbius transform that takes this tile
+   * to its neighbor across that edge.
    */
   private computeEdgeTransforms(): Matrix[] {
     const transforms: Matrix[] = []
     const { p, q } = this.config
 
-    // For {p,q} tiling, compute the distance between adjacent tile centers
-    // Using hyperbolic trigonometry
     const angleP = Math.PI / p
     const angleQ = Math.PI / q
 
-    // The distance from tile center to edge midpoint (apothem) in hyperbolic space
-    // cosh(apothem) = cos(π/q) / sin(π/p)
+    // Distance from tile center to edge midpoint (apothem)
     const coshApothem = Math.cos(angleQ) / Math.sin(angleP)
     const apothem = Math.acosh(coshApothem)
 
     // Distance between adjacent tile centers = 2 * apothem
     const centerDist = 2 * apothem
-
-    // Convert hyperbolic distance to Poincaré disk distance
-    // In Poincaré disk: tanh(d/2) gives the Euclidean distance from origin
     const poincareNeighborDist = Math.tanh(centerDist / 2)
 
     for (let dir = 0; dir < p; dir++) {
-      // Direction to neighbor center (perpendicular to edge, pointing outward)
       const edgeAngle = (2 * Math.PI * (dir + 0.5)) / p
       const neighborX = poincareNeighborDist * Math.cos(edgeAngle)
       const neighborY = poincareNeighborDist * Math.sin(edgeAngle)
 
-      // Create translation from origin to neighbor center
-      // Then rotate so the tile has correct orientation
       const translation = this.createTranslation(neighborX, neighborY)
-
-      // The neighbor tile is rotated by π relative to us (sharing an edge)
       const rotation = this.createRotation(Math.PI)
 
       transforms.push(this.composeSU11(translation, rotation))
@@ -824,7 +855,28 @@ export class Hyperbolic2DTessellation {
     const bMagSq = bRe * bRe + bIm * bIm
     const det = aMagSq - bMagSq
 
-    if (det <= 0.001) return [1, 0, 0, 0, 0, 0, 0, 0, 1]
+    // Renormalize to keep the matrix in SU(1,1).
+    // Must preserve BOTH a and b components - b encodes the view position.
+    if (det <= 0.001) {
+      // Nearly degenerate: scale both a and b together to maintain
+      // their ratio (which encodes the Möbius transform direction)
+      // while ensuring det > 0. Add a small epsilon to a's magnitude.
+      const scale = Math.sqrt(Math.max(aMagSq, 1))
+      const aReN = aRe / scale
+      const aImN = aIm / scale
+      const bReN = bRe / scale
+      const bImN = bIm / scale
+      // Now renormalize the scaled result
+      const det2 =
+        aReN * aReN + aImN * aImN - (bReN * bReN + bImN * bImN)
+      if (det2 <= 0) {
+        // Truly collapsed - shrink b to restore validity
+        const bScale = 0.99 * Math.sqrt((aReN * aReN + aImN * aImN) / Math.max(bReN * bReN + bImN * bImN, 1e-10))
+        return [aReN, aImN, bReN * bScale, bImN * bScale, 0, 0, 0, 0, 1]
+      }
+      const s2 = 1 / Math.sqrt(det2)
+      return [aReN * s2, aImN * s2, bReN * s2, bImN * s2, 0, 0, 0, 0, 1]
+    }
 
     const s = 1 / Math.sqrt(det)
     return [aRe * s, aIm * s, bRe * s, bIm * s, 0, 0, 0, 0, 1]

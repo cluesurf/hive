@@ -267,7 +267,6 @@ export class Canvas2DRenderer {
     for (let i = 1; i < canvasPoints.length; i++) {
       const pt = canvasPoints[i]
       if (!pt) continue
-      // TODO: For hyperbolic geometry, draw geodesic arcs instead of straight lines
       this.ctx.lineTo(pt[0], pt[1])
     }
     this.ctx.closePath()
